@@ -20,6 +20,7 @@ struct Options {
     color: bool,
     icons: bool,
     logo: Option<String>,
+    no_terminator: bool,
 }
 
 pub fn version_string() -> String {
@@ -37,7 +38,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color-no] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch [--color-no] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
@@ -45,10 +46,12 @@ fn main() {
     let stdout_is_terminal = io::stdout().is_terminal();
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
     let ((width, height), fetched_rows) = fetch_snapshot();
-    print!(
-        "{}",
-        render(&fetched_rows, logo.as_deref(), width, height, options.icons)
-    );
+    let output = render(&fetched_rows, logo.as_deref(), width, height, options.icons);
+    if options.no_terminator {
+        print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+    } else {
+        print!("{output}");
+    }
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, bool), String> {
@@ -56,6 +59,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         color: env::var_os("NO_COLOR").is_none(),
         icons: true,
         logo: None,
+        no_terminator: false,
     };
     let mut help = false;
     let mut version = false;
@@ -65,6 +69,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--help" | "-h" => help = true,
             "--version" | "-V" => version = true,
             "--color-no" | "--no-color" => options.color = false,
+            "--no-terminator" => options.no_terminator = true,
             "--icons" => {
                 options.icons = match args.next().as_deref() {
                     Some("on") => true,
@@ -476,12 +481,12 @@ mod tests {
     #[test]
     fn flags_disable_icons_and_color() {
         let (options, help, version) = parse_args(
-            ["--icons", "off", "--color-no"]
+            ["--icons", "off", "--color-no", "--no-terminator"]
                 .into_iter()
                 .map(str::to_owned),
         )
         .unwrap();
-        assert!(!options.icons && !options.color && !help && !version);
+        assert!(!options.icons && !options.color && options.no_terminator && !help && !version);
     }
 
     #[test]

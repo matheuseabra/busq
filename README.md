@@ -23,6 +23,7 @@ Useful flags:
 --version              Show the version
 --icons on|off         Enable or disable row icons
 --color-no             Disable color output
+--no-terminator        Omit the final newline
 --logo none|auto|PATH  Select the neutral logo, disable it, or load a file
 ```
 

@@ -12,3 +12,14 @@ fn piped_output_is_plain_and_has_no_logo() {
     assert!(!stdout.contains("\x1b["));
     assert!(stdout.contains("hostname"));
 }
+
+#[test]
+fn no_terminator_omits_only_the_final_newline() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--no-terminator"])
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(!output.stdout.ends_with(b"\n"));
+}

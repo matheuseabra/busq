@@ -122,8 +122,8 @@ missing/exotic systems, and packaging for a widget use case.
 Tasks:
 - [x] Built-in default neutral logo (three small lines), omitted from piped output.
 - [x] Flags: `--logo none|auto|path` and `--icons on|off`.
-- [ ] `--no-terminator` (no trailing newline for
-      widget use), and `--color <auto|always|never>`.
+- [x] `--no-terminator` omits the trailing newline for widget use.
+- [ ] `--color <auto|always|never>`.
 - [ ] `term.rs` -> `--no-term` flag to omit uptime if not wanted.
 - [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag
       prints the underlying error line in a tooltip style.
