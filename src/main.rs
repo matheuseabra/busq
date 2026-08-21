@@ -3,6 +3,7 @@ use std::{
     io::{self, IsTerminal},
     process::Command,
 };
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MISSING: &str = "—";
 
@@ -33,15 +34,12 @@ fn main() {
         );
         return;
     }
-    if options.logo.is_some() && io::stdout().is_terminal() {
-        if let Ok(logo) = fs::read_to_string(options.logo.as_deref().unwrap()) {
-            print!("{logo}");
-        }
-    }
-    for (label, value) in rows() {
-        let label = if options.icons { icon(&label) } else { label };
-        println!("{label:<16} {value}");
-    }
+    let logo = load_logo(options.logo.as_deref(), io::stdout().is_terminal());
+    let (width, height) = terminal_size();
+    print!(
+        "{}",
+        render(&rows(), logo.as_deref(), width, height, options.icons)
+    );
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, bool), String> {
@@ -118,6 +116,124 @@ fn rows() -> Vec<(String, String)> {
     ]
 }
 
+fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
+    path.filter(|_| stdout_is_terminal)
+        .and_then(|path| fs::read_to_string(path).ok())
+}
+
+fn terminal_size() -> (usize, usize) {
+    let width = env::var("COLUMNS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(80);
+    let height = env::var("LINES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(24);
+    (width, height)
+}
+
+fn render(
+    rows: &[(String, String)],
+    logo: Option<&str>,
+    width: usize,
+    height: usize,
+    icons: bool,
+) -> String {
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|(label, _)| if icons { icon(label) } else { label.clone() })
+        .collect();
+    let info_width = labels
+        .iter()
+        .map(|label| display_width(label) + 1)
+        .max()
+        .unwrap_or(1);
+    let logo_lines: Vec<&str> = logo
+        .map(|value| value.lines().collect())
+        .unwrap_or_default();
+    let logo_width = logo_lines
+        .iter()
+        .map(|line| display_width(line))
+        .max()
+        .unwrap_or(0);
+    let mut lines = Vec::new();
+
+    if !logo_lines.is_empty() && width >= logo_width + info_width + 4 {
+        let rows_height = rows.len().max(logo_lines.len());
+        for index in 0..rows_height {
+            let left = logo_lines.get(index).copied().unwrap_or("");
+            let right = rows
+                .get(index)
+                .map(|(label, value)| {
+                    let label = if icons { icon(label) } else { label.clone() };
+                    format!(
+                        "{}{}",
+                        pad_display(&label, info_width),
+                        truncate(value, width.saturating_sub(info_width + 4))
+                    )
+                })
+                .unwrap_or_default();
+            lines.push(format!("{}  {right}", pad_display(left, logo_width)));
+        }
+    } else {
+        if !logo_lines.is_empty() && logo_lines.len() + rows.len() <= height {
+            lines.extend(logo_lines.iter().map(|line| (*line).to_owned()));
+        }
+        for (label, value) in rows {
+            let label = if icons { icon(label) } else { label.clone() };
+            let value = truncate(value, width.saturating_sub(info_width + 1));
+            if width <= 30 {
+                lines.push(truncate(&label, width));
+                lines.push(truncate(value.as_str(), width));
+            } else {
+                lines.push(format!("{} {value}", pad_display(&label, info_width)));
+            }
+        }
+    }
+    lines.truncate(height);
+    if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", lines.join("\n"))
+    }
+}
+
+fn truncate(value: &str, width: usize) -> String {
+    if display_width(value) <= width {
+        return value.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    if width == 1 {
+        return "…".to_owned();
+    }
+    let mut result = String::new();
+    let mut used = 0;
+    for character in value.chars() {
+        let character_width = character.width().unwrap_or(0);
+        if used + character_width > width - 1 {
+            break;
+        }
+        result.push(character);
+        used += character_width;
+    }
+    result.push('…');
+    result
+}
+
+fn display_width(value: &str) -> usize {
+    UnicodeWidthStr::width(value)
+}
+
+fn pad_display(value: &str, width: usize) -> String {
+    format!(
+        "{value}{}",
+        " ".repeat(width.saturating_sub(display_width(value)))
+    )
+}
+
 fn icon(label: &str) -> String {
     let symbol = match label {
         "cpu" => "◈",
@@ -142,12 +258,11 @@ fn command(command: &str) -> Option<String> {
 }
 
 fn uptime() -> Option<String> {
-    if let Some(seconds) = fs::read_to_string("/proc/uptime")
-        .ok()?
-        .split_whitespace()
-        .next()?
-        .parse::<u64>()
-        .ok()
+    if let Ok(info) = fs::read_to_string("/proc/uptime")
+        && let Some(seconds) = info
+            .split_whitespace()
+            .next()
+            .and_then(|value| value.parse::<u64>().ok())
     {
         return Some(format!(
             "{}d {}h {}m",
@@ -160,18 +275,27 @@ fn uptime() -> Option<String> {
 }
 
 fn cpu() -> Option<String> {
-    if let Ok(info) = fs::read_to_string("/proc/cpuinfo") {
-        let model = info
-            .lines()
-            .find_map(|line| line.strip_prefix("model name\t: "))?;
-        let cores = info
-            .lines()
-            .filter(|line| line.starts_with("processor"))
-            .count();
-        return Some(format!("{model} ({cores} cores)"));
+    if let Ok(info) = fs::read_to_string("/proc/cpuinfo")
+        && let Some(cpu) = parse_cpuinfo(&info)
+    {
+        return Some(cpu);
     }
     let model = command("sysctl -n machdep.cpu.brand_string")?;
     Some(format!("{model} ({} cores)", command("sysctl -n hw.ncpu")?))
+}
+
+fn parse_cpuinfo(info: &str) -> Option<String> {
+    let model = info.lines().find_map(|line| {
+        line.split_once(':')
+            .filter(|(key, _)| key.trim() == "model name")
+            .map(|(_, value)| value.trim())
+            .filter(|value| !value.is_empty())
+    })?;
+    let cores = info
+        .lines()
+        .filter(|line| line.starts_with("processor"))
+        .count();
+    Some(format!("{model} ({cores} cores)"))
 }
 
 fn memory() -> Option<String> {
@@ -198,11 +322,25 @@ fn mem_kib(info: &str, key: &str) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{mem_kib, parse_args};
+    use super::{load_logo, mem_kib, parse_args, parse_cpuinfo, render};
 
     #[test]
     fn parses_meminfo_values() {
         assert_eq!(mem_kib("MemTotal: 1024 kB", "MemTotal"), Some(1024));
+    }
+
+    #[test]
+    fn parses_cpuinfo_fixture() {
+        let fixture = "processor\t: 0\nmodel name\t: Test CPU\nprocessor\t: 1\n";
+        assert_eq!(
+            parse_cpuinfo(fixture).as_deref(),
+            Some("Test CPU (2 cores)")
+        );
+    }
+
+    #[test]
+    fn piped_output_never_loads_a_logo() {
+        assert!(load_logo(Some("/definitely/not/a/logo"), false).is_none());
     }
 
     #[test]
@@ -219,5 +357,28 @@ mod tests {
     #[test]
     fn version_contains_package_version() {
         assert!(super::version_string().contains(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn layout_stacks_logo_in_a_narrow_pane() {
+        let rows = vec![("os".into(), "macos".into())];
+        assert_eq!(render(&rows, Some("/\\"), 8, 4, false), "/\\\nos\nmac…\n");
+    }
+
+    #[test]
+    fn layout_uses_single_column_at_thirty() {
+        let rows = vec![("os".into(), "a-long-value".into())];
+        assert_eq!(render(&rows, None, 30, 4, false), "os\na-long-value\n");
+    }
+
+    #[test]
+    fn layout_truncates_to_height() {
+        let rows = vec![("one".into(), "1".into()), ("two".into(), "2".into())];
+        assert_eq!(render(&rows, None, 80, 1, false), "one  1\n");
+    }
+
+    #[test]
+    fn truncation_respects_wide_glyphs() {
+        assert_eq!(super::truncate("猫猫", 3), "猫…");
     }
 }
