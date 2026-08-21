@@ -1,0 +1,26 @@
+name: Bug report
+description: Report incorrect output, a crash, or a reproducible regression.
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the command and the observed output.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, terminal, Rust version, and minfetch commit/version.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Give the smallest reliable reproduction steps.
+    validations:
+      required: true
