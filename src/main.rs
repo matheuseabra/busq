@@ -317,13 +317,25 @@ fn parse_cpuinfo(info: &str) -> Option<String> {
 }
 
 fn memory() -> Option<String> {
-    let info = fs::read_to_string("/proc/meminfo").ok()?;
-    let total = mem_kib(&info, "MemTotal")?;
-    let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
+    if let Ok(info) = fs::read_to_string("/proc/meminfo")
+        && let Some(total) = mem_kib(&info, "MemTotal")
+    {
+        let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
+        return Some(format!(
+            "{} / {} MiB",
+            total.saturating_sub(available) / 1024,
+            total / 1024
+        ));
+    }
+
+    let total = command("sysctl -n hw.memsize")?.parse::<u64>().ok()?;
+    let used = command("vm_stat")
+        .and_then(|info| parse_vm_stat(&info, total))
+        .unwrap_or(total);
     Some(format!(
         "{} / {} MiB",
-        (total - available) / 1024,
-        total / 1024
+        used / 1024 / 1024,
+        total / 1024 / 1024
     ))
 }
 
@@ -338,13 +350,45 @@ fn mem_kib(info: &str, key: &str) -> Option<u64> {
     })
 }
 
+fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
+    let page_size = info
+        .lines()
+        .find_map(|line| line.strip_prefix("Page size of "))
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(4096);
+    let available_pages = ["Pages free", "Pages inactive", "Pages speculative"]
+        .into_iter()
+        .map(|key| {
+            info.lines()
+                .find_map(|line| {
+                    line.strip_prefix(key)?
+                        .split_once(':')?
+                        .1
+                        .trim()
+                        .trim_end_matches('.')
+                        .parse::<u64>()
+                        .ok()
+                })
+                .unwrap_or(0)
+        })
+        .sum::<u64>();
+    Some(total_bytes.saturating_sub(available_pages.saturating_mul(page_size)))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{load_logo, mem_kib, parse_args, parse_cpuinfo, render};
+    use super::{load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat, render};
 
     #[test]
     fn parses_meminfo_values() {
         assert_eq!(mem_kib("MemTotal: 1024 kB", "MemTotal"), Some(1024));
+    }
+
+    #[test]
+    fn parses_vm_stat_fixture() {
+        let fixture = "Page size of 4096 bytes\nPages free: 10.\nPages inactive: 20.\nPages speculative: 5.\n";
+        assert_eq!(parse_vm_stat(fixture, 200 * 4096), Some(165 * 4096));
     }
 
     #[test]

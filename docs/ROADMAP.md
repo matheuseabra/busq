@@ -44,7 +44,8 @@ Tasks:
 - [x] CLI: `--color-no`, `--version`, `--help`, and `--icons on|off` to control the Unicode glyph
       labels (icons **on by default** — review verdict).
 - [x] Fetch hostname, user, OS, and shell.
-- [x] Fetch CPU model + core count, Linux memory, root disk, uptime, and context rows.
+- [x] Fetch CPU model + core count, Linux `/proc` or macOS `sysctl`/`vm_stat` memory, root disk,
+      uptime, and context rows.
 - [ ] Fetch CPU temperature and GPU identity; failures render as `—` like every other row.
 - [x] Plain k/v rendering; `—` for unavailable rows; no ANSI output.
 - [x] Piped output is plain text and suppresses the logo.
