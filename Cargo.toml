@@ -2,6 +2,12 @@
 name = "minfetch"
 version = "0.1.0"
 edition = "2024"
+description = "A tiny, pane-aware system-info readout for terminals"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/matheuseabra/minfetch"
+keywords = ["cli", "system-information", "terminal"]
+categories = ["command-line-utilities"]
 
 [profile.release]
 opt-level = "z"

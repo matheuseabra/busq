@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test-size:
     name: build + test + size (${{ matrix.os }})
@@ -21,10 +28,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build (release)
-        run: cargo build --release
+        run: cargo build --locked --release
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Test (release)
-        run: cargo test --release
+        run: cargo test --locked --release
 
       - name: Size budget trend
         run: ./scripts/size-gate.sh target/release/minfetch
