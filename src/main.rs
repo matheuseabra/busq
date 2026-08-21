@@ -29,6 +29,7 @@ struct Options {
     icons: bool,
     logo: Option<String>,
     no_terminator: bool,
+    no_term: bool,
 }
 
 pub fn version_string() -> String {
@@ -46,14 +47,14 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-term] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
     }
     let stdout_is_terminal = io::stdout().is_terminal();
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
-    let ((width, height), fetched_rows) = fetch_snapshot();
+    let ((width, height), fetched_rows) = fetch_snapshot(options.no_term);
     let output = render_with_color(
         &fetched_rows,
         logo.as_deref(),
@@ -79,6 +80,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         icons: true,
         logo: None,
         no_terminator: false,
+        no_term: false,
     };
     let mut help = false;
     let mut version = false;
@@ -98,6 +100,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
                 }
             }
             "--no-terminator" => options.no_terminator = true,
+            "--no-term" => options.no_term = true,
             "--icons" => {
                 options.icons = match args.next().as_deref() {
                     Some("on") => true,
@@ -120,8 +123,8 @@ impl ColorMode {
     }
 }
 
-fn rows() -> Vec<(String, String)> {
-    vec![
+fn rows(no_term: bool) -> Vec<(String, String)> {
+    let mut rows = vec![
         (
             "hostname".into(),
             first_env(&["HOSTNAME", "COMPUTERNAME"])
@@ -160,7 +163,11 @@ fn rows() -> Vec<(String, String)> {
         ),
         ("temperature".into(), MISSING.into()),
         ("gpu".into(), MISSING.into()),
-    ]
+    ];
+    if no_term {
+        rows.retain(|(label, _)| label != "uptime");
+    }
+    rows
 }
 
 fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
@@ -174,13 +181,13 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
     }
 }
 
-fn fetch_snapshot() -> ((usize, usize), Vec<(String, String)>) {
+fn fetch_snapshot(no_term: bool) -> ((usize, usize), Vec<(String, String)>) {
     #[cfg(unix)]
     let previous_handler = install_resize_handler();
     let initial_size = terminal_size();
-    let fetched_rows = rows();
+    let fetched_rows = rows(no_term);
     let snapshot = if resize_seen() {
-        (terminal_size(), rows())
+        (terminal_size(), rows(no_term))
     } else {
         (initial_size, fetched_rows)
     };
@@ -538,13 +545,20 @@ mod tests {
     #[test]
     fn flags_disable_icons_and_color() {
         let (options, help, version) = parse_args(
-            ["--icons", "off", "--color", "never", "--no-terminator"]
-                .into_iter()
-                .map(str::to_owned),
+            [
+                "--icons",
+                "off",
+                "--color",
+                "never",
+                "--no-terminator",
+                "--no-term",
+            ]
+            .into_iter()
+            .map(str::to_owned),
         )
         .unwrap();
         assert_eq!(options.color, ColorMode::Never);
-        assert!(!options.icons && options.no_terminator && !help && !version);
+        assert!(!options.icons && options.no_terminator && options.no_term && !help && !version);
     }
 
     #[test]

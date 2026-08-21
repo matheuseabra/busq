@@ -34,3 +34,14 @@ fn forced_color_stays_plain_when_stdout_is_piped() {
     assert!(output.status.success());
     assert!(!output.stdout.windows(2).any(|bytes| bytes == b"\x1b["));
 }
+
+#[test]
+fn no_term_omits_the_uptime_row() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--no-term"])
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("uptime"));
+}

@@ -25,6 +25,7 @@ Useful flags:
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
+--no-term              Omit the uptime row
 --no-terminator        Omit the final newline
 --logo none|auto|PATH  Select the neutral logo, disable it, or load a file
 ```

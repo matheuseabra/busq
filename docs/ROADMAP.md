@@ -124,7 +124,7 @@ Tasks:
 - [x] Flags: `--logo none|auto|path` and `--icons on|off`.
 - [x] `--no-terminator` omits the trailing newline for widget use.
 - [x] `--color <auto|always|never>` colors labels on a TTY while keeping piped output plain.
-- [ ] `term.rs` -> `--no-term` flag to omit uptime if not wanted.
+- [x] `--no-term` omits uptime when not wanted.
 - [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag
       prints the underlying error line in a tooltip style.
 - [ ] Optional config file for default rows, logo, icons, and theme; flags override it.
