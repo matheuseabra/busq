@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::{
     env, fs,
     io::{self, IsTerminal},
@@ -122,6 +124,22 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
 }
 
 fn terminal_size() -> (usize, usize) {
+    #[cfg(unix)]
+    if io::stdout().is_terminal() {
+        let fd = io::stdout().as_raw_fd();
+        let mut size = std::mem::MaybeUninit::<libc::winsize>::zeroed();
+        // SAFETY: `size` points to writable memory for the kernel's winsize result;
+        // the ioctl only writes that struct and does not retain the pointer.
+        let result = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, size.as_mut_ptr()) };
+        if result == 0 {
+            // SAFETY: a successful TIOCGWINSZ call initialized the struct.
+            let size = unsafe { size.assume_init() };
+            if size.ws_col > 0 && size.ws_row > 0 {
+                return (size.ws_col.into(), size.ws_row.into());
+            }
+        }
+    }
+
     let width = env::var("COLUMNS")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -366,9 +384,21 @@ mod tests {
     }
 
     #[test]
+    fn layout_uses_side_by_side_logo_when_wide() {
+        let rows = vec![("os".into(), "macos".into())];
+        assert_eq!(render(&rows, Some("/\\"), 20, 4, false), "/\\  os macos\n");
+    }
+
+    #[test]
     fn layout_uses_single_column_at_thirty() {
-        let rows = vec![("os".into(), "a-long-value".into())];
-        assert_eq!(render(&rows, None, 30, 4, false), "os\na-long-value\n");
+        let rows = vec![
+            ("os".into(), "macos".into()),
+            ("user".into(), "matheus".into()),
+        ];
+        assert_eq!(
+            render(&rows, None, 30, 4, false),
+            "os\nmacos\nuser\nmatheus\n"
+        );
     }
 
     #[test]

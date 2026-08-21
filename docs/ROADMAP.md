@@ -11,24 +11,6 @@ is "done" only when its gate is green.
   can verify with a command, a test, or a manual repro.
 - Phases are ordered by dependency, not by "importance." Phase 0 is the prerequisite for everything.
 
-## Current recommendation
-
-Keep the implementation dependency-light until the fetch and render contracts
-are stable. The current code has a working Phase 1 core and a Phase 2A layout
-slice, but it is not ready to claim the cross-platform gates yet.
-
-Recommended order:
-
-1. Finish Phase 2A with Unicode-width-safe layout tests and explicit non-TTY
-   output.
-2. Add Phase 2B terminal-size/resize integration only after the pure renderer
-   is stable. Use the smallest platform-specific API; do not add watch mode.
-3. Split Phase 3 into reliability first (real fetchers, structured failures,
-   fixtures), then user customization (logo/config/themes), then JSON.
-4. Defer temperature, GPU, Windows, and sysinfo fallback until the primary
-   macOS/Linux fetch contracts are tested; they are rows, not reasons to widen
-   the architecture early.
-
 ---
 
 ## Phase 0 — Skeleton & build health (locally complete)
@@ -36,7 +18,7 @@ Recommended order:
 **Goal:** a building, testable, near-empty binary with CI measuring its size budget.
 
 Tasks:
-- [x] `cargo init` with package name `minfetch`, edition 2021+, no external deps yet.
+- [x] `cargo init` with package name `minfetch`, edition 2021+, and a dependency-light baseline.
 - [x] Add release profile per ARCH (opt-level z, lto, codegen-units 1, panic abort, strip).
 - [x] `main.rs` prints `"minfetch 0.1.0"` and exits 0.
 - [x] Add a `cargo size` helper (a make/just target or a script) that reports the binary size in CI
@@ -48,7 +30,7 @@ Tasks:
 
 **Phase 0 gate:**
 - [x] `cargo build --release && cargo test --release` passes locally.
-- [ ] CI records the release binary size against the current budget on both primary OSes.
+- [x] CI records the release binary size against the current budget on both primary OSes.
 
 ---
 
@@ -59,15 +41,16 @@ Tasks:
 side-by-side layout lands in phase 2.
 
 Tasks:
-- [x] CLI: `--color-no`, `--version`, `--help`, and `--icons off` to disable the unicode glyph
-      labels (icons **on by default** — grill-me resolution) (clap minimal flags).
+- [x] CLI: `--color-no`, `--version`, `--help`, and `--icons on|off` to control the Unicode glyph
+      labels (icons **on by default** — review verdict).
 - [x] Fetch hostname, user, OS, and shell.
 - [x] Fetch CPU model + core count, Linux memory, root disk, uptime, and context rows.
 - [ ] Fetch CPU temperature and GPU identity; failures render as `—` like every other row.
 - [x] Plain k/v rendering; `—` for unavailable rows; no ANSI output.
 - [x] Piped output is plain text and suppresses the logo.
-- [x] Optional `--logo PATH` stacks or positions an ASCII logo.
-- [ ] Fetch fixtures for Linux `/proc` and macOS `sysctl` paths.
+- [x] Optional `--logo PATH` loads an ASCII logo; Phase 2A controls stacking or side-by-side placement.
+- [x] Unit fixtures for Linux-style CPU and memory parser input.
+- [ ] Platform fixtures for macOS `sysctl` and remaining fetch paths.
 
 **Phase 1 gate:**
 - [x] `cargo test --release` green locally.
@@ -80,8 +63,8 @@ Tasks:
 
 ## Phase 2A — Pure pane-aware rendering (v0.2)
 
-**Goal:** responsive layout: side-by-side logo + info when wide, stacked / single-column when
-narrow; long values truncate; `--logo` positioned correctly.
+**Goal:** a pure, width/height-driven layout: side-by-side logo + info when wide, stacked /
+single-column when narrow; long values truncate; `--logo` is positioned correctly.
 
 Tasks:
 - [x] Implement the minimal width-budget render model.
@@ -90,18 +73,17 @@ Tasks:
 - [x] Ellipsis truncation for values exceeding the pane width with `unicode-width`.
 - [x] `--logo` respects the re-flow rules; logo dropped when pane too narrow for any horizontal
       layout *and* stacked would overflow height.
-- [ ] Pane-resize re-render: on `SIGWINCH`, re-read `TIOCGWINSZ`, re-fetch fresh rows, re-layout,
-      and re-print. This remains single-shot resize handling, not watch mode.
-      (Requires the small `signal_hook` dep or a `nix` signal handler.)
 - [x] `unicode-width` handled as **core** (not optional) in the renderer, since icons are on by
       default — a mis-wide glyph must never misalign the info column.
 - [x] Height cap: rows beyond terminal height are omitted, not scrolled.
 
 **Phase 2 gate:**
-- [x] Fixed-width tests cover side-by-side, stacked, single-column, truncation, and height cap.
+- [x] Fixed-width tests cover side-by-side, stacked, single-column, truncation, Unicode width,
+      and height cap.
 - [ ] Manual verification in a real terminal: resize a pane to 120/60/30 wide and 8/12/20 tall;
-      output never wraps a row or scrolls beyond the pane.
-- [ ] A 30-column run shows the single-column k/v fallback with correct alignment.
+      output never wraps a row or scrolls beyond the pane. A 30x8 PTY smoke passed; the full
+      width/height matrix remains pending.
+- [x] A 30-column run shows the single-column k/v fallback with correct alignment.
 - [x] `cargo test --release` green locally; size gate remains to verify.
 
 ## Phase 2B — Terminal integration
@@ -110,18 +92,23 @@ Tasks:
 turning minfetch into a resident/watch process.
 
 Tasks:
-- [ ] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
+- [x] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
       fallback for pipes and test environments.
 - [ ] Add one resize boundary (`SIGWINCH`) that re-fetches, re-layouts, and
       prints fresh data; avoid a background loop.
-- [ ] Add an integration test for the non-TTY fallback and manual checks at
-      120/60/30 columns and 8/12/20 rows.
+- [x] Add an integration test for the non-TTY fallback and fixed-width checks.
+
+Decision note: SIGWINCH remains pending. A process that exits after one readout
+cannot observe a later resize, while waiting for one signal would become a
+resident/watch mode. Resolve that product contract before adding a signal
+handler; do not silently turn the default command into a hanging process.
 
 **Phase 2B gate:**
 
-- [ ] No output row wraps or exceeds the detected width.
+- [x] No output row wraps or exceeds the detected width in fixed-width and PTY
+      smoke checks.
 - [ ] Resize produces fresh values and never uses cached rows.
-- [ ] `cargo test --release` and Clippy pass on the primary targets.
+- [x] `cargo test --locked --release` and Clippy pass locally.
 
 ---
 
