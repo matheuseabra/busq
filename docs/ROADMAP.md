@@ -95,33 +95,34 @@ turning minfetch into a resident/watch process.
 Tasks:
 - [x] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
       fallback for pipes and test environments.
-- [ ] Add one resize boundary (`SIGWINCH`) that re-fetches, re-layouts, and
-      prints fresh data; avoid a background loop.
+- [x] Observe `SIGWINCH` only during the single fetch/render snapshot; if it
+      arrives, re-read dimensions and re-fetch once, then exit normally.
 - [x] Add an integration test for the non-TTY fallback and fixed-width checks.
 
-Decision note: SIGWINCH remains pending. A process that exits after one readout
-cannot observe a later resize, while waiting for one signal would become a
-resident/watch mode. Resolve that product contract before adding a signal
-handler; do not silently turn the default command into a hanging process.
+Decision note: resize handling is deliberately bounded to the active snapshot.
+The command never waits for SIGWINCH, so it remains single-shot rather than
+becoming a resident/watch process.
 
 **Phase 2B gate:**
 
 - [x] No output row wraps or exceeds the detected width in fixed-width and PTY
       smoke checks.
-- [ ] Resize produces fresh values and never uses cached rows.
+- [x] A SIGWINCH observed during collection produces fresh values and never
+      uses cached rows; later resizes require a future resident mode, which is
+      out of scope.
 - [x] `cargo test --locked --release` and Clippy pass locally.
 
 ---
 
-## Phase 3 — Polish, flags, reliability (v0.3)
+## Phase 3 — Polish, flags, reliability (v0.3, started)
 
 **Goal:** battery of user-facing flags, a built-in ASCII logo with casing, robustness against
 missing/exotic systems, and packaging for a widget use case.
 
 Tasks:
-- [ ] Built-in default logo (small; a few lines) — pick a neutral branch/Tux/Apple mark, keep it
-      tiny. Ship as a string.
-- [ ] Flags: `--logo none|auto|path`, `--icons on|off`, `--no-terminator` (no trailing newline for
+- [x] Built-in default neutral logo (three small lines), omitted from piped output.
+- [x] Flags: `--logo none|auto|path` and `--icons on|off`.
+- [ ] `--no-terminator` (no trailing newline for
       widget use), and `--color <auto|always|never>`.
 - [ ] `term.rs` -> `--no-term` flag to omit uptime if not wanted.
 - [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag

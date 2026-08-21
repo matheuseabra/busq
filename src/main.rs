@@ -1,5 +1,7 @@
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     env, fs,
     io::{self, IsTerminal},
@@ -8,6 +10,10 @@ use std::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MISSING: &str = "—";
+const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
+
+#[cfg(unix)]
+static RESIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default)]
 struct Options {
@@ -31,16 +37,17 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color-no] [--icons off] [--logo PATH]",
+            "{}\n\nUsage: minfetch [--color-no] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
     }
-    let logo = load_logo(options.logo.as_deref(), io::stdout().is_terminal());
-    let (width, height) = terminal_size();
+    let stdout_is_terminal = io::stdout().is_terminal();
+    let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
+    let ((width, height), fetched_rows) = fetch_snapshot();
     print!(
         "{}",
-        render(&rows(), logo.as_deref(), width, height, options.icons)
+        render(&fetched_rows, logo.as_deref(), width, height, options.icons)
     );
 }
 
@@ -119,8 +126,60 @@ fn rows() -> Vec<(String, String)> {
 }
 
 fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
-    path.filter(|_| stdout_is_terminal)
-        .and_then(|path| fs::read_to_string(path).ok())
+    if !stdout_is_terminal {
+        return None;
+    }
+    match path {
+        Some("none") => None,
+        Some("auto") | None => Some(DEFAULT_LOGO.into()),
+        Some(path) => fs::read_to_string(path).ok(),
+    }
+}
+
+fn fetch_snapshot() -> ((usize, usize), Vec<(String, String)>) {
+    #[cfg(unix)]
+    let previous_handler = install_resize_handler();
+    let initial_size = terminal_size();
+    let fetched_rows = rows();
+    let snapshot = if resize_seen() {
+        (terminal_size(), rows())
+    } else {
+        (initial_size, fetched_rows)
+    };
+    #[cfg(unix)]
+    restore_resize_handler(previous_handler);
+    snapshot
+}
+
+#[cfg(unix)]
+extern "C" fn handle_resize(_: libc::c_int) {
+    RESIZED.store(true, Ordering::Relaxed);
+}
+
+#[cfg(unix)]
+fn install_resize_handler() -> Option<libc::sighandler_t> {
+    // SAFETY: the handler only performs an atomic store and has C ABI.
+    let handler = handle_resize as *const () as libc::sighandler_t;
+    let previous = unsafe { libc::signal(libc::SIGWINCH, handler) };
+    (previous != libc::SIG_ERR).then_some(previous)
+}
+
+#[cfg(unix)]
+fn restore_resize_handler(previous: Option<libc::sighandler_t>) {
+    if let Some(previous) = previous {
+        // SAFETY: `previous` came from the same SIGWINCH handler slot.
+        unsafe { libc::signal(libc::SIGWINCH, previous) };
+    }
+}
+
+#[cfg(unix)]
+fn resize_seen() -> bool {
+    RESIZED.swap(false, Ordering::Relaxed)
+}
+
+#[cfg(not(unix))]
+fn resize_seen() -> bool {
+    false
 }
 
 fn terminal_size() -> (usize, usize) {
@@ -378,7 +437,9 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat, render};
+    use super::{
+        DEFAULT_LOGO, load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat, render,
+    };
 
     #[test]
     fn parses_meminfo_values() {
@@ -403,6 +464,13 @@ mod tests {
     #[test]
     fn piped_output_never_loads_a_logo() {
         assert!(load_logo(Some("/definitely/not/a/logo"), false).is_none());
+    }
+
+    #[test]
+    fn logo_modes_select_the_neutral_default() {
+        assert_eq!(load_logo(None, true).as_deref(), Some(DEFAULT_LOGO));
+        assert!(load_logo(Some("none"), true).is_none());
+        assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(DEFAULT_LOGO));
     }
 
     #[test]

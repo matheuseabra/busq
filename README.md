@@ -23,7 +23,7 @@ Useful flags:
 --version              Show the version
 --icons on|off         Enable or disable row icons
 --color-no             Disable color output
---logo PATH            Use an ASCII logo when stdout is a terminal
+--logo none|auto|PATH  Select the neutral logo, disable it, or load a file
 ```
 
 Piped output is plain text and never includes ANSI escapes or the logo.
