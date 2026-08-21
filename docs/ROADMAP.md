@@ -123,7 +123,7 @@ Tasks:
 - [x] Built-in default neutral logo (three small lines), omitted from piped output.
 - [x] Flags: `--logo none|auto|path` and `--icons on|off`.
 - [x] `--no-terminator` omits the trailing newline for widget use.
-- [ ] `--color <auto|always|never>`.
+- [x] `--color <auto|always|never>` colors labels on a TTY while keeping piped output plain.
 - [ ] `term.rs` -> `--no-term` flag to omit uptime if not wanted.
 - [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag
       prints the underlying error line in a tooltip style.

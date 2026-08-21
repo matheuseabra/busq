@@ -11,13 +11,21 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MISSING: &str = "—";
 const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
+const ANSI_LABEL: &str = "\x1b[36m";
+const ANSI_RESET: &str = "\x1b[0m";
 
 #[cfg(unix)]
 static RESIZED: AtomicBool = AtomicBool::new(false);
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ColorMode {
+    Auto,
+    Always,
+    Never,
+}
+
 struct Options {
-    color: bool,
+    color: ColorMode,
     icons: bool,
     logo: Option<String>,
     no_terminator: bool,
@@ -38,7 +46,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color-no] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
@@ -46,7 +54,14 @@ fn main() {
     let stdout_is_terminal = io::stdout().is_terminal();
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
     let ((width, height), fetched_rows) = fetch_snapshot();
-    let output = render(&fetched_rows, logo.as_deref(), width, height, options.icons);
+    let output = render_with_color(
+        &fetched_rows,
+        logo.as_deref(),
+        width,
+        height,
+        options.icons,
+        options.color.enabled(stdout_is_terminal),
+    );
     if options.no_terminator {
         print!("{}", output.strip_suffix('\n').unwrap_or(&output));
     } else {
@@ -56,7 +71,11 @@ fn main() {
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, bool), String> {
     let mut options = Options {
-        color: env::var_os("NO_COLOR").is_none(),
+        color: if env::var_os("NO_COLOR").is_some() {
+            ColorMode::Never
+        } else {
+            ColorMode::Auto
+        },
         icons: true,
         logo: None,
         no_terminator: false,
@@ -68,7 +87,16 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         match arg.as_str() {
             "--help" | "-h" => help = true,
             "--version" | "-V" => version = true,
-            "--color-no" | "--no-color" => options.color = false,
+            "--color-no" | "--no-color" => options.color = ColorMode::Never,
+            "--color" => {
+                options.color = match args.next().as_deref() {
+                    Some("auto") => ColorMode::Auto,
+                    Some("always") => ColorMode::Always,
+                    Some("never") => ColorMode::Never,
+                    Some(value) => return Err(format!("invalid --color value {value}")),
+                    None => return Err("--color needs auto, always, or never".into()),
+                }
+            }
             "--no-terminator" => options.no_terminator = true,
             "--icons" => {
                 options.icons = match args.next().as_deref() {
@@ -83,8 +111,13 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             value => return Err(format!("unexpected argument {value}")),
         }
     }
-    let _ = options.color; // Phase 1 emits no ANSI, including when stdout is piped.
     Ok((options, help, version))
+}
+
+impl ColorMode {
+    fn enabled(self, stdout_is_terminal: bool) -> bool {
+        stdout_is_terminal && self != Self::Never
+    }
 }
 
 fn rows() -> Vec<(String, String)> {
@@ -215,12 +248,24 @@ fn terminal_size() -> (usize, usize) {
     (width, height)
 }
 
+#[cfg(test)]
 fn render(
     rows: &[(String, String)],
     logo: Option<&str>,
     width: usize,
     height: usize,
     icons: bool,
+) -> String {
+    render_with_color(rows, logo, width, height, icons, false)
+}
+
+fn render_with_color(
+    rows: &[(String, String)],
+    logo: Option<&str>,
+    width: usize,
+    height: usize,
+    icons: bool,
+    color: bool,
 ) -> String {
     let labels: Vec<String> = rows
         .iter()
@@ -251,7 +296,7 @@ fn render(
                     let label = if icons { icon(label) } else { label.clone() };
                     format!(
                         "{}{}",
-                        pad_display(&label, info_width),
+                        colorize(&pad_display(&label, info_width), color),
                         truncate(value, width.saturating_sub(info_width + 4))
                     )
                 })
@@ -266,10 +311,13 @@ fn render(
             let label = if icons { icon(label) } else { label.clone() };
             let value = truncate(value, width.saturating_sub(info_width + 1));
             if width <= 30 {
-                lines.push(truncate(&label, width));
+                lines.push(colorize(&truncate(&label, width), color));
                 lines.push(truncate(value.as_str(), width));
             } else {
-                lines.push(format!("{} {value}", pad_display(&label, info_width)));
+                lines.push(format!(
+                    "{} {value}",
+                    colorize(&pad_display(&label, info_width), color)
+                ));
             }
         }
     }
@@ -278,6 +326,14 @@ fn render(
         String::new()
     } else {
         format!("{}\n", lines.join("\n"))
+    }
+}
+
+fn colorize(value: &str, color: bool) -> String {
+    if color {
+        format!("{ANSI_LABEL}{value}{ANSI_RESET}")
+    } else {
+        value.to_owned()
     }
 }
 
@@ -443,7 +499,8 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_LOGO, load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat, render,
+        ColorMode, DEFAULT_LOGO, load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat,
+        render, render_with_color,
     };
 
     #[test]
@@ -481,12 +538,31 @@ mod tests {
     #[test]
     fn flags_disable_icons_and_color() {
         let (options, help, version) = parse_args(
-            ["--icons", "off", "--color-no", "--no-terminator"]
+            ["--icons", "off", "--color", "never", "--no-terminator"]
                 .into_iter()
                 .map(str::to_owned),
         )
         .unwrap();
-        assert!(!options.icons && !options.color && options.no_terminator && !help && !version);
+        assert_eq!(options.color, ColorMode::Never);
+        assert!(!options.icons && options.no_terminator && !help && !version);
+    }
+
+    #[test]
+    fn color_modes_parse_and_never_disables_output() {
+        let (options, _, _) =
+            parse_args(["--color", "always"].into_iter().map(str::to_owned)).unwrap();
+        assert_eq!(options.color, ColorMode::Always);
+        assert!(!ColorMode::Never.enabled(true));
+        assert!(!ColorMode::Always.enabled(false));
+    }
+
+    #[test]
+    fn color_wraps_labels_without_changing_layout_width() {
+        let rows = vec![("os".into(), "macos".into())];
+        assert_eq!(
+            render_with_color(&rows, None, 40, 4, false, true),
+            "\x1b[36mos \x1b[0m macos\n"
+        );
     }
 
     #[test]

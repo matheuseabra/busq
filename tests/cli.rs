@@ -23,3 +23,14 @@ fn no_terminator_omits_only_the_final_newline() {
     assert!(output.status.success());
     assert!(!output.stdout.ends_with(b"\n"));
 }
+
+#[test]
+fn forced_color_stays_plain_when_stdout_is_piped() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--color", "always"])
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(!output.stdout.windows(2).any(|bytes| bytes == b"\x1b["));
+}
