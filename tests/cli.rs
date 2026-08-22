@@ -31,6 +31,7 @@ fn no_terminator_omits_only_the_final_newline() {
 fn forced_color_stays_plain_when_stdout_is_piped() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .args(["--color", "always"])
+        .env("COLORFGBG", "0;7")
         .output()
         .expect("run minfetch");
 
@@ -42,6 +43,7 @@ fn forced_color_stays_plain_when_stdout_is_piped() {
 fn no_color_environment_stays_plain() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .env("NO_COLOR", "1")
+        .env("COLORFGBG", "0;7")
         .output()
         .expect("run minfetch");
 

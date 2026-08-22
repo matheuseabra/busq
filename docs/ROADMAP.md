@@ -173,28 +173,28 @@ Tasks:
 
 ---
 
-## Milestone 5 — Theme detection (v0.5, planned)
+## Milestone 5 — Theme detection (v0.5, complete)
 
 **Goal:** choose a small preset theme from terminal hints without changing the plain-output rules
 or turning minfetch into a theme framework.
 
 Tasks:
-- [ ] Detect a terminal light/dark hint when one is available, with a deterministic fallback.
-- [ ] Keep explicit `--theme` and config values ahead of detected defaults.
-- [ ] Map detection only to the existing `subtle` and `mono` presets.
-- [ ] Cover unset, malformed, piped, and `NO_COLOR` detection inputs with tests.
-- [ ] Document detection precedence and the environment hints used.
+- [x] Detect a terminal light/dark hint when one is available, with a deterministic fallback.
+- [x] Keep explicit `--theme` and config values ahead of detected defaults.
+- [x] Map detection only to the existing `subtle` and `mono` presets.
+- [x] Cover unset, malformed, piped, and `NO_COLOR` detection inputs with tests.
+- [x] Document detection precedence and the environment hints used.
 
 **M5 gate:**
-- [ ] Detection is deterministic in fixtures and never emits ANSI into a pipe.
-- [ ] Explicit theme selection remains the final authority.
-- [ ] The default binary gains no new runtime dependency.
+- [x] Detection is deterministic in fixtures and never emits ANSI into a pipe.
+- [x] Explicit theme selection remains the final authority.
+- [x] The default binary gains no new runtime dependency.
 
 ---
 
 ## Non-goals (explicitly out of scope for v1)
 
-- Full `fastfetch` parity (package counts, network info, theme detection, GPU charts).
+- Full `fastfetch` parity (package counts, network info, arbitrary theme frameworks, GPU charts).
 - A TUI with interactive input / scrolling.
 - A daemon/watch mode with continuous sampling.
 - GPU load, temperature, or power charts.

@@ -31,7 +31,7 @@ minfetch --json
 | `--icons on\|off` | Enable or disable row icons. `--no-icons` is an alias for off. |
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
-| `--theme subtle\|mono` | Select the label theme. |
+| `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
 | `--logo none\|auto\|PATH` | Disable the logo, use the neutral logo, or load a file. |
 | `--no-term` | Omit the uptime row. |
 | `--no-terminator` | Omit the final newline. |
@@ -61,6 +61,14 @@ theme = subtle
 
 Command-line flags override config defaults. Unknown keys and invalid row names fail with a
 line-numbered error.
+
+### Theme detection
+
+Theme precedence is: `--theme`, `theme` in the config file, `COLORFGBG` when stdout is a TTY,
+then `subtle`. `COLORFGBG` uses its final semicolon-separated value as the ANSI background index:
+`0`–`6` and `8` select `subtle`, while `7` and `15` select `mono`. Unset, malformed, or unrecognized
+values use the deterministic `subtle` fallback. Piped output and `NO_COLOR` never emit ANSI,
+regardless of the selected or detected theme.
 
 ## Layout and output
 

@@ -47,7 +47,7 @@ struct Options {
     icons: bool,
     logo: Option<String>,
     rows: Option<Vec<String>>,
-    theme: Theme,
+    theme: Option<Theme>,
     no_terminator: bool,
     no_term: bool,
     verbose: bool,
@@ -82,6 +82,9 @@ fn main() {
         return;
     }
     let stdout_is_terminal = io::stdout().is_terminal();
+    let theme = options
+        .theme
+        .unwrap_or_else(|| detect_theme(stdout_is_terminal, env::var("COLORFGBG").ok().as_deref()));
     let ((width, height), fetched_rows, errors) =
         fetch_snapshot(options.no_term, options.rows.as_deref());
     if options.probe {
@@ -115,9 +118,7 @@ fn main() {
         width,
         height,
         options.icons,
-        options
-            .theme
-            .color_enabled(options.color.enabled(stdout_is_terminal)),
+        theme.color_enabled(options.color.enabled(stdout_is_terminal)),
     );
     if options.no_terminator {
         print!("{}", output.strip_suffix('\n').unwrap_or(&output));
@@ -143,7 +144,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         icons: config.icons.unwrap_or(true),
         logo: config.logo,
         rows: config.rows,
-        theme: config.theme.unwrap_or(Theme::Subtle),
+        theme: config.theme,
         no_terminator: false,
         no_term: false,
         verbose: false,
@@ -172,12 +173,12 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
                 args.next().ok_or("--config needs a path")?;
             }
             "--theme" => {
-                options.theme = match args.next().as_deref() {
+                options.theme = Some(match args.next().as_deref() {
                     Some("subtle") => Theme::Subtle,
                     Some("mono") => Theme::Mono,
                     Some(value) => return Err(format!("invalid --theme value {value}")),
                     None => return Err("--theme needs subtle or mono".into()),
-                }
+                })
             }
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
@@ -318,6 +319,22 @@ impl ColorMode {
 impl Theme {
     fn color_enabled(self, color_enabled: bool) -> bool {
         color_enabled && self != Self::Mono
+    }
+}
+
+fn detect_theme(stdout_is_terminal: bool, colorfgbg: Option<&str>) -> Theme {
+    if !stdout_is_terminal {
+        return Theme::Subtle;
+    }
+    colorfgbg.and_then(parse_colorfgbg).unwrap_or(Theme::Subtle)
+}
+
+fn parse_colorfgbg(value: &str) -> Option<Theme> {
+    let background = value.rsplit(';').next()?.parse::<u8>().ok()?;
+    match background {
+        0..=6 | 8 => Some(Theme::Subtle),
+        7 | 15 => Some(Theme::Mono),
+        _ => None,
     }
 }
 
@@ -795,8 +812,9 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, Theme, load_logo, mem_kib, parse_args, parse_config,
-        parse_cpuinfo, parse_vm_stat, render, render_probe, render_with_color,
+        ColorMode, DEFAULT_LOGO, Theme, detect_theme, load_logo, mem_kib, parse_args,
+        parse_colorfgbg, parse_config, parse_cpuinfo, parse_vm_stat, render, render_probe,
+        render_with_color,
     };
 
     #[test]
@@ -868,6 +886,22 @@ mod tests {
     }
 
     #[test]
+    fn colorfgbg_detects_dark_and_light_backgrounds() {
+        assert_eq!(parse_colorfgbg("15;0"), Some(Theme::Subtle));
+        assert_eq!(parse_colorfgbg("0;7"), Some(Theme::Mono));
+        assert_eq!(parse_colorfgbg("7"), Some(Theme::Mono));
+    }
+
+    #[test]
+    fn malformed_colorfgbg_uses_the_fallback() {
+        assert_eq!(parse_colorfgbg("not-a-palette"), None);
+        assert_eq!(parse_colorfgbg("1;99"), None);
+        assert_eq!(detect_theme(true, None), Theme::Subtle);
+        assert_eq!(detect_theme(true, Some("not-a-palette")), Theme::Subtle);
+        assert_eq!(detect_theme(false, Some("0;7")), Theme::Subtle);
+    }
+
+    #[test]
     fn parses_config_defaults() {
         let config = parse_config(
             "color = never\nicons = off\nlogo = none\nrows = os, user\ntheme = mono\n",
@@ -882,6 +916,34 @@ mod tests {
             Some(["os".into(), "user".into()].as_slice())
         );
         assert_eq!(config.theme, Some(Theme::Mono));
+    }
+
+    #[test]
+    fn explicit_theme_overrides_config_theme() {
+        let path = std::env::temp_dir().join(format!("minfetch-theme-{}", std::process::id()));
+        std::fs::write(&path, "theme = mono\n").expect("write config");
+
+        let (configured, _, _) = parse_args(
+            ["--config", path.to_str().expect("config path")]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .expect("parse configured args");
+        let (explicit, _, _) = parse_args(
+            [
+                "--config",
+                path.to_str().expect("config path"),
+                "--theme",
+                "subtle",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        )
+        .expect("parse explicit args");
+        std::fs::remove_file(path).expect("remove config");
+
+        assert_eq!(configured.theme, Some(Theme::Mono));
+        assert_eq!(explicit.theme, Some(Theme::Subtle));
     }
 
     #[test]

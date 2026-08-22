@@ -34,7 +34,7 @@ Useful flags:
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
---theme subtle|mono    Select the default color theme
+--theme subtle|mono    Select the color theme (otherwise detect a terminal hint)
 --probe                Dump platform, terminal, row, and error detection
 --json                 Emit rows as JSON (feature build only)
 --no-term              Omit the uptime row
@@ -49,6 +49,11 @@ An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
 `$HOME/.config/minfetch/config`) accepts `color`, `icons`, `logo`, `rows`, and
 `theme` keys as `key = value`; command-line flags override its defaults. Use
 `--config PATH` to select another file.
+
+Without an explicit theme, a TTY `COLORFGBG` hint selects `subtle` for dark ANSI
+backgrounds (`0`–`6` and `8`) or `mono` for light backgrounds (`7` and `15`); missing
+or malformed hints fall back to `subtle`. Piped output and `NO_COLOR` remain
+ANSI-free.
 
 JSON output is feature-gated: build with `cargo build --features json` before
 using `--json`.
