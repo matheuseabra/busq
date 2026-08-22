@@ -152,7 +152,7 @@ Tasks:
 **Goal:** a dependable, distributable `v1.0`.
 
 Tasks:
-- [ ] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
+- [x] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
 - [x] Reproducible builds enforced in CI with a fixed `SOURCE_DATE_EPOCH` and byte-identical
       release binaries.
 - [ ] Homebrew formula (`brew tap` or upstream formula) + a `cargo install` line in README.
