@@ -125,8 +125,8 @@ Tasks:
 - [x] `--no-terminator` omits the trailing newline for widget use.
 - [x] `--color <auto|always|never>` colors labels on a TTY while keeping piped output plain.
 - [x] `--no-term` omits uptime when not wanted.
-- [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag
-      prints the underlying error line in a tooltip style.
+- [x] Fetch errors are structured: a single failure never aborts the whole run; `--verbose` prints
+      the underlying error line in a tooltip style on stderr.
 - [ ] Optional config file for default rows, logo, icons, and theme; flags override it.
 - [ ] Small preset theme set around the subtle default.
 - [ ] Feature-gated JSON emitter, excluded from the default binary.
@@ -141,7 +141,7 @@ Tasks:
 - [ ] `--help` and `--version` are accurate and consistent.
 - [ ] No-ICO, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
       checks.
-- [ ] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
+- [x] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
       renders.
 - [ ] Size trend remains within the earned feature budget after all flags + logo.
 

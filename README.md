@@ -27,6 +27,7 @@ Useful flags:
                        Select color behavior (never emits ANSI when piped)
 --no-term              Omit the uptime row
 --no-terminator        Omit the final newline
+--verbose              Print fetch failures to stderr
 --logo none|auto|PATH  Select the neutral logo, disable it, or load a file
 ```
 

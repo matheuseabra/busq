@@ -45,3 +45,40 @@ fn no_term_omits_the_uptime_row() {
     assert!(output.status.success());
     assert!(!String::from_utf8_lossy(&output.stdout).contains("uptime"));
 }
+
+#[test]
+fn empty_shell_is_rendered_as_missing() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env("SHELL", "")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains("shell") && line.ends_with('—'))
+    );
+}
+
+#[test]
+fn verbose_reports_missing_environment_rows_on_stderr() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env_remove("SHELL")
+        .env_remove("TERM")
+        .env_remove("USER")
+        .env_remove("USERNAME")
+        .env_remove("XDG_CURRENT_DESKTOP")
+        .env_remove("DESKTOP_SESSION")
+        .arg("--verbose")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("↳ shell:"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains("shell") && line.ends_with('—'))
+    );
+}

@@ -13,6 +13,8 @@ const MISSING: &str = "—";
 const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
 const ANSI_LABEL: &str = "\x1b[36m";
 const ANSI_RESET: &str = "\x1b[0m";
+type FetchResult = Result<String, String>;
+type Snapshot = ((usize, usize), Vec<(String, String)>, Vec<String>);
 
 #[cfg(unix)]
 static RESIZED: AtomicBool = AtomicBool::new(false);
@@ -30,6 +32,7 @@ struct Options {
     logo: Option<String>,
     no_terminator: bool,
     no_term: bool,
+    verbose: bool,
 }
 
 pub fn version_string() -> String {
@@ -47,14 +50,19 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-term] [--no-terminator] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
     }
     let stdout_is_terminal = io::stdout().is_terminal();
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
-    let ((width, height), fetched_rows) = fetch_snapshot(options.no_term);
+    let ((width, height), fetched_rows, errors) = fetch_snapshot(options.no_term);
+    if options.verbose {
+        for error in errors {
+            eprintln!("  ↳ {error}");
+        }
+    }
     let output = render_with_color(
         &fetched_rows,
         logo.as_deref(),
@@ -81,6 +89,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         logo: None,
         no_terminator: false,
         no_term: false,
+        verbose: false,
     };
     let mut help = false;
     let mut version = false;
@@ -101,6 +110,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             }
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
+            "--verbose" => options.verbose = true,
             "--icons" => {
                 options.icons = match args.next().as_deref() {
                     Some("on") => true,
@@ -123,43 +133,27 @@ impl ColorMode {
     }
 }
 
-fn rows(no_term: bool) -> Vec<(String, String)> {
+fn rows(no_term: bool) -> (Vec<(String, String)>, Vec<String>) {
+    let mut errors = Vec::new();
     let mut rows = vec![
-        (
-            "hostname".into(),
-            first_env(&["HOSTNAME", "COMPUTERNAME"])
-                .unwrap_or_else(|| command("hostname").unwrap_or_else(|| MISSING.into())),
-        ),
-        (
-            "user".into(),
-            first_env(&["USER", "USERNAME"]).unwrap_or_else(|| MISSING.into()),
+        fetched_row("hostname", hostname(), &mut errors),
+        fetched_row(
+            "user",
+            environment_value(&["USER", "USERNAME"]),
+            &mut errors,
         ),
         ("os".into(), env::consts::OS.into()),
-        (
-            "shell".into(),
-            env::var("SHELL").unwrap_or_else(|_| MISSING.into()),
-        ),
-        ("uptime".into(), uptime().unwrap_or_else(|| MISSING.into())),
-        ("cpu".into(), cpu().unwrap_or_else(|| MISSING.into())),
-        ("memory".into(), memory().unwrap_or_else(|| MISSING.into())),
-        (
-            "disk".into(),
-            command("df -h /")
-                .and_then(|v| v.lines().nth(1).map(str::to_owned))
-                .unwrap_or_else(|| MISSING.into()),
-        ),
-        (
-            "kernel".into(),
-            command("uname -sr").unwrap_or_else(|| MISSING.into()),
-        ),
-        (
-            "terminal".into(),
-            env::var("TERM").unwrap_or_else(|_| MISSING.into()),
-        ),
-        (
-            "desktop".into(),
-            first_env(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"])
-                .unwrap_or_else(|| MISSING.into()),
+        fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
+        fetched_row("uptime", uptime(), &mut errors),
+        fetched_row("cpu", cpu(), &mut errors),
+        fetched_row("memory", memory(), &mut errors),
+        fetched_row("disk", disk(), &mut errors),
+        fetched_row("kernel", command("uname -sr"), &mut errors),
+        fetched_row("terminal", environment_value(&["TERM"]), &mut errors),
+        fetched_row(
+            "desktop",
+            environment_value(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
+            &mut errors,
         ),
         ("temperature".into(), MISSING.into()),
         ("gpu".into(), MISSING.into()),
@@ -167,7 +161,17 @@ fn rows(no_term: bool) -> Vec<(String, String)> {
     if no_term {
         rows.retain(|(label, _)| label != "uptime");
     }
-    rows
+    (rows, errors)
+}
+
+fn fetched_row(label: &str, result: FetchResult, errors: &mut Vec<String>) -> (String, String) {
+    match result {
+        Ok(value) => (label.into(), value),
+        Err(error) => {
+            errors.push(format!("{label}: {error}"));
+            (label.into(), MISSING.into())
+        }
+    }
 }
 
 fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
@@ -181,7 +185,7 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
     }
 }
 
-fn fetch_snapshot(no_term: bool) -> ((usize, usize), Vec<(String, String)>) {
+fn fetch_snapshot(no_term: bool) -> Snapshot {
     #[cfg(unix)]
     let previous_handler = install_resize_handler();
     let initial_size = terminal_size();
@@ -193,7 +197,8 @@ fn fetch_snapshot(no_term: bool) -> ((usize, usize), Vec<(String, String)>) {
     };
     #[cfg(unix)]
     restore_resize_handler(previous_handler);
-    snapshot
+    let ((width, height), (rows, errors)) = snapshot;
+    ((width, height), rows, errors)
 }
 
 #[cfg(unix)]
@@ -390,26 +395,53 @@ fn icon(label: &str) -> String {
 }
 
 fn first_env(names: &[&str]) -> Option<String> {
-    names.iter().find_map(|name| env::var(name).ok())
+    names
+        .iter()
+        .find_map(|name| env::var(name).ok().filter(|value| !value.is_empty()))
 }
 
-fn command(command: &str) -> Option<String> {
+fn hostname() -> FetchResult {
+    first_env(&["HOSTNAME", "COMPUTERNAME"])
+        .ok_or_else(|| "HOSTNAME/COMPUTERNAME is unset".to_owned())
+        .or_else(|_| command("hostname"))
+}
+
+fn environment_value(names: &[&str]) -> FetchResult {
+    first_env(names).ok_or_else(|| format!("{} is unset", names.join("/")))
+}
+
+fn command(command: &str) -> FetchResult {
     let mut parts = command.split_whitespace();
-    let output = Command::new(parts.next()?).args(parts).output().ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().into())
+    let program = parts.next().ok_or_else(|| "empty command".to_owned())?;
+    let output = Command::new(program)
+        .args(parts)
+        .output()
+        .map_err(|error| format!("{command}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("{command}: exited with {}", output.status));
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!value.is_empty())
+        .then_some(value)
+        .ok_or_else(|| format!("{command}: returned no output"))
 }
 
-fn uptime() -> Option<String> {
+fn disk() -> FetchResult {
+    command("df -h /")?
+        .lines()
+        .nth(1)
+        .map(str::to_owned)
+        .ok_or_else(|| "df -h /: returned no filesystem row".into())
+}
+
+fn uptime() -> FetchResult {
     if let Ok(info) = fs::read_to_string("/proc/uptime")
         && let Some(seconds) = info
             .split_whitespace()
             .next()
             .and_then(|value| value.parse::<u64>().ok())
     {
-        return Some(format!(
+        return Ok(format!(
             "{}d {}h {}m",
             seconds / 86400,
             seconds / 3600 % 24,
@@ -419,14 +451,15 @@ fn uptime() -> Option<String> {
     command("sysctl -n kern.boottime")
 }
 
-fn cpu() -> Option<String> {
+fn cpu() -> FetchResult {
     if let Ok(info) = fs::read_to_string("/proc/cpuinfo")
         && let Some(cpu) = parse_cpuinfo(&info)
     {
-        return Some(cpu);
+        return Ok(cpu);
     }
     let model = command("sysctl -n machdep.cpu.brand_string")?;
-    Some(format!("{model} ({} cores)", command("sysctl -n hw.ncpu")?))
+    let cores = command("sysctl -n hw.ncpu")?;
+    Ok(format!("{model} ({cores} cores)"))
 }
 
 fn parse_cpuinfo(info: &str) -> Option<String> {
@@ -443,23 +476,26 @@ fn parse_cpuinfo(info: &str) -> Option<String> {
     Some(format!("{model} ({cores} cores)"))
 }
 
-fn memory() -> Option<String> {
+fn memory() -> FetchResult {
     if let Ok(info) = fs::read_to_string("/proc/meminfo")
         && let Some(total) = mem_kib(&info, "MemTotal")
     {
         let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
-        return Some(format!(
+        return Ok(format!(
             "{} / {} MiB",
             total.saturating_sub(available) / 1024,
             total / 1024
         ));
     }
 
-    let total = command("sysctl -n hw.memsize")?.parse::<u64>().ok()?;
+    let total = command("sysctl -n hw.memsize")?
+        .parse::<u64>()
+        .map_err(|error| format!("hw.memsize: {error}"))?;
     let used = command("vm_stat")
+        .ok()
         .and_then(|info| parse_vm_stat(&info, total))
         .unwrap_or(total);
-    Some(format!(
+    Ok(format!(
         "{} / {} MiB",
         used / 1024 / 1024,
         total / 1024 / 1024
@@ -552,13 +588,15 @@ mod tests {
                 "never",
                 "--no-terminator",
                 "--no-term",
+                "--verbose",
             ]
             .into_iter()
             .map(str::to_owned),
         )
         .unwrap();
         assert_eq!(options.color, ColorMode::Never);
-        assert!(!options.icons && options.no_terminator && options.no_term && !help && !version);
+        assert!(!options.icons && options.no_terminator && options.no_term && options.verbose);
+        assert!(!help && !version);
     }
 
     #[test]
@@ -617,5 +655,23 @@ mod tests {
     #[test]
     fn truncation_respects_wide_glyphs() {
         assert_eq!(super::truncate("猫猫", 3), "猫…");
+    }
+
+    #[test]
+    fn failed_rows_stay_missing_and_collect_diagnostics() {
+        let labels = [
+            "hostname", "user", "shell", "uptime", "cpu", "memory", "disk", "kernel", "terminal",
+            "desktop",
+        ];
+        let mut errors = Vec::new();
+        let rows = labels
+            .iter()
+            .map(|label| super::fetched_row(label, Err("fixture failure".into()), &mut errors))
+            .collect::<Vec<_>>();
+
+        assert!(rows.iter().all(|(_, value)| value == super::MISSING));
+        assert_eq!(errors.len(), labels.len());
+        assert!(errors.iter().all(|error| error.contains("fixture failure")));
+        assert!(super::render(&rows, None, 80, 20, false).contains("hostname  —"));
     }
 }
