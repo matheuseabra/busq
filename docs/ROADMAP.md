@@ -46,12 +46,12 @@ Tasks:
 - [x] Fetch hostname, user, OS, and shell.
 - [x] Fetch CPU model + core count, Linux `/proc` or macOS `sysctl`/`vm_stat` memory, root disk,
       uptime, and context rows.
-- [ ] Fetch CPU temperature and GPU identity; failures render as `—` like every other row.
+- [x] Fetch CPU temperature and GPU identity; failures render as `—` like every other row.
 - [x] Plain k/v rendering; `—` for unavailable rows; no ANSI output.
 - [x] Piped output is plain text and suppresses the logo.
 - [x] Optional `--logo PATH` loads an ASCII logo; Phase 2A controls stacking or side-by-side placement.
 - [x] Unit fixtures for Linux-style CPU and memory parser input.
-- [ ] Platform fixtures for macOS `sysctl` and remaining fetch paths.
+- [x] Platform fixtures for macOS and the remaining hardware fetch paths.
 
 **Phase 1 gate:**
 - [x] `cargo test --release` green locally.

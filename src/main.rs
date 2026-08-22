@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     env, fs,
     io::{self, IsTerminal},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -360,8 +360,8 @@ fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, V
             environment_value(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
             &mut errors,
         ),
-        ("temperature".into(), MISSING.into()),
-        ("gpu".into(), MISSING.into()),
+        fetched_row("temperature", temperature(), &mut errors),
+        fetched_row("gpu", gpu(), &mut errors),
     ];
     if no_term {
         rows.retain(|(label, _)| label != "uptime");
@@ -732,6 +732,106 @@ fn cpu() -> FetchResult {
     Ok(format!("{model} ({cores} cores)"))
 }
 
+fn temperature() -> FetchResult {
+    #[cfg(target_os = "linux")]
+    {
+        return linux_temperature(Path::new("/sys/class/thermal"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return command("ioreg -r -c IOHWSensor -l").and_then(|info| {
+            parse_ioreg_temperature(&info)
+                .map(|value| format!("{value} °C"))
+                .ok_or_else(|| "IOHWSensor reported no temperature".into())
+        });
+    }
+    #[allow(unreachable_code)]
+    Err("CPU temperature is unsupported on this platform".into())
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn linux_temperature(root: &Path) -> FetchResult {
+    let entries = fs::read_dir(root).map_err(|error| format!("{}: {error}", root.display()))?;
+    let mut temperatures = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let value = fs::read_to_string(path.join("temp")).ok();
+        let kind = fs::read_to_string(path.join("type")).unwrap_or_default();
+        if let Some(value) = value.as_deref().and_then(parse_millidegrees) {
+            temperatures.push((kind, value));
+        }
+    }
+    temperatures
+        .iter()
+        .find(|(kind, _)| {
+            let kind = kind.to_ascii_lowercase();
+            kind.contains("cpu") || kind.contains("package")
+        })
+        .or_else(|| temperatures.first())
+        .map(|(_, value)| format!("{value} °C"))
+        .ok_or_else(|| "no readable thermal zone".into())
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_millidegrees(value: &str) -> Option<i64> {
+    let value = value.trim().parse::<i64>().ok()?;
+    (value > -273_150).then_some(value / 1000)
+}
+
+fn parse_ioreg_temperature(info: &str) -> Option<i64> {
+    info.lines().find_map(|line| {
+        let value = line.split_once("temperature")?.1.split_once('=')?.1.trim();
+        let value = value.split_whitespace().next()?.parse::<i64>().ok()?;
+        Some(if value > 1_000 { value / 65_536 } else { value })
+    })
+}
+
+fn gpu() -> FetchResult {
+    #[cfg(target_os = "linux")]
+    {
+        return linux_gpu(Path::new("/sys/class/drm"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return command("system_profiler SPDisplaysDataType -detailLevel mini").and_then(|info| {
+            parse_system_profiler_gpu(&info).ok_or_else(|| "system_profiler reported no GPU".into())
+        });
+    }
+    #[allow(unreachable_code)]
+    Err("GPU identity is unsupported on this platform".into())
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn linux_gpu(root: &Path) -> FetchResult {
+    let entries = fs::read_dir(root).map_err(|error| format!("{}: {error}", root.display()))?;
+    entries
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("card"))
+        .find_map(|entry| fs::read_to_string(entry.path().join("device/uevent")).ok())
+        .and_then(|info| parse_drm_uevent(&info))
+        .ok_or_else(|| "no DRM GPU identity".into())
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_drm_uevent(info: &str) -> Option<String> {
+    let driver = info.lines().find_map(|line| line.strip_prefix("DRIVER="))?;
+    let pci_id = info.lines().find_map(|line| line.strip_prefix("PCI_ID="));
+    Some(match pci_id {
+        Some(pci_id) => format!("{driver} ({pci_id})"),
+        None => driver.to_owned(),
+    })
+}
+
+fn parse_system_profiler_gpu(info: &str) -> Option<String> {
+    info.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Chipset Model:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
+}
+
 fn parse_cpuinfo(info: &str) -> Option<String> {
     let model = info.lines().find_map(|line| {
         line.split_once(':')
@@ -812,9 +912,10 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, Theme, detect_theme, load_logo, mem_kib, parse_args,
-        parse_colorfgbg, parse_config, parse_cpuinfo, parse_vm_stat, render, render_probe,
-        render_with_color,
+        ColorMode, DEFAULT_LOGO, Theme, detect_theme, linux_gpu, linux_temperature, load_logo,
+        mem_kib, parse_args, parse_colorfgbg, parse_config, parse_cpuinfo, parse_drm_uevent,
+        parse_ioreg_temperature, parse_millidegrees, parse_system_profiler_gpu, parse_vm_stat,
+        render, render_probe, render_with_color,
     };
 
     #[test]
@@ -835,6 +936,48 @@ mod tests {
             parse_cpuinfo(fixture).as_deref(),
             Some("Test CPU (2 cores)")
         );
+    }
+
+    #[test]
+    fn parses_linux_temperature_fixture() {
+        assert_eq!(
+            parse_millidegrees(include_str!("../tests/fixtures/linux-temperature")),
+            Some(62)
+        );
+    }
+
+    #[test]
+    fn parses_macos_temperature_fixture() {
+        assert_eq!(
+            parse_ioreg_temperature(include_str!("../tests/fixtures/macos-ioreg-temperature")),
+            Some(54)
+        );
+    }
+
+    #[test]
+    fn parses_linux_gpu_fixture() {
+        assert_eq!(
+            parse_drm_uevent(include_str!("../tests/fixtures/linux-drm-uevent")).as_deref(),
+            Some("amdgpu (1002:73bf)")
+        );
+    }
+
+    #[test]
+    fn parses_macos_gpu_fixture() {
+        assert_eq!(
+            parse_system_profiler_gpu(include_str!("../tests/fixtures/macos-system-profiler-gpu"))
+                .as_deref(),
+            Some("Apple M1 Pro")
+        );
+    }
+
+    #[test]
+    fn missing_hardware_paths_return_errors() {
+        let root = std::env::temp_dir().join(format!("minfetch-hardware-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create empty fixture directory");
+        assert!(linux_temperature(&root).is_err());
+        assert!(linux_gpu(&root).is_err());
+        std::fs::remove_dir(&root).expect("remove empty fixture directory");
     }
 
     #[test]
