@@ -28,6 +28,7 @@ Useful flags:
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
 --theme subtle|mono    Select the default color theme
+--probe                Dump platform, terminal, row, and error detection
 --json                 Emit rows as JSON (feature build only)
 --no-term              Omit the uptime row
 --no-terminator        Omit the final newline

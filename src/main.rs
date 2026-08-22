@@ -51,6 +51,7 @@ struct Options {
     no_terminator: bool,
     no_term: bool,
     verbose: bool,
+    probe: bool,
     #[cfg(feature = "json")]
     json: bool,
 }
@@ -70,7 +71,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
             version_string(),
             if cfg!(feature = "json") {
                 " [--json]"
@@ -81,14 +82,23 @@ fn main() {
         return;
     }
     let stdout_is_terminal = io::stdout().is_terminal();
-    let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
     let ((width, height), fetched_rows, errors) =
         fetch_snapshot(options.no_term, options.rows.as_deref());
+    if options.probe {
+        let output = render_probe(&fetched_rows, &errors, width, height, stdout_is_terminal);
+        if options.no_terminator {
+            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+        } else {
+            print!("{output}");
+        }
+        return;
+    }
     if options.verbose {
         for error in errors {
             eprintln!("  ↳ {error}");
         }
     }
+    let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
     #[cfg(feature = "json")]
     if options.json {
         let output = render_json(&fetched_rows);
@@ -137,6 +147,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         no_terminator: false,
         no_term: false,
         verbose: false,
+        probe: false,
         #[cfg(feature = "json")]
         json: false,
     };
@@ -171,6 +182,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
+            "--probe" | "--debug-sysinfo" => options.probe = true,
             "--no-icons" => options.icons = false,
             "--json" => {
                 #[cfg(feature = "json")]
@@ -520,6 +532,33 @@ fn render_with_color(
     }
 }
 
+fn render_probe(
+    rows: &[(String, String)],
+    errors: &[String],
+    width: usize,
+    height: usize,
+    stdout_is_terminal: bool,
+) -> String {
+    let mut output = format!(
+        "minfetch probe\nplatform: {}\narchitecture: {}\nstdout_tty: {}\nterminal_size: {}x{}\nrows:\n",
+        env::consts::OS,
+        env::consts::ARCH,
+        stdout_is_terminal,
+        width,
+        height
+    );
+    for (label, value) in rows {
+        output.push_str(&format!("{label}: {value}\n"));
+    }
+    if !errors.is_empty() {
+        output.push_str("errors:\n");
+        for error in errors {
+            output.push_str(&format!("  {error}\n"));
+        }
+    }
+    output
+}
+
 #[cfg(feature = "json")]
 fn render_json(rows: &[(String, String)]) -> String {
     let rows = rows
@@ -757,7 +796,7 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 mod tests {
     use super::{
         ColorMode, DEFAULT_LOGO, Theme, load_logo, mem_kib, parse_args, parse_config,
-        parse_cpuinfo, parse_vm_stat, render, render_with_color,
+        parse_cpuinfo, parse_vm_stat, render, render_probe, render_with_color,
     };
 
     #[test]
@@ -843,6 +882,20 @@ mod tests {
             Some(["os".into(), "user".into()].as_slice())
         );
         assert_eq!(config.theme, Some(Theme::Mono));
+    }
+
+    #[test]
+    fn probe_output_includes_environment_and_fetch_results() {
+        let rows = vec![("os".into(), "test-os".into())];
+        let output = render_probe(&rows, &["cpu: fixture failure".into()], 80, 24, false);
+
+        assert!(output.contains("minfetch probe"));
+        assert!(output.contains("platform:"));
+        assert!(output.contains("architecture:"));
+        assert!(output.contains("terminal_size: 80x24"));
+        assert!(output.contains("os: test-os"));
+        assert!(output.contains("  cpu: fixture failure"));
+        assert!(!output.contains("\x1b["));
     }
 
     #[cfg(feature = "json")]

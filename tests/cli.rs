@@ -77,6 +77,25 @@ fn help_and_version_include_the_current_version() {
 }
 
 #[test]
+fn probe_reports_detection_without_logo_or_ansi() {
+    let probe = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--probe")
+        .output()
+        .expect("run probe");
+    let alias = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--debug-sysinfo")
+        .output()
+        .expect("run probe alias");
+
+    assert!(probe.status.success() && alias.status.success());
+    let stdout = String::from_utf8_lossy(&probe.stdout);
+    assert!(stdout.contains("minfetch probe"));
+    assert!(stdout.contains("platform:") && stdout.contains("architecture:"));
+    assert!(stdout.contains("terminal_size:") && stdout.contains("rows:"));
+    assert!(!stdout.contains("\x1b[") && !stdout.contains("╭─╮"));
+}
+
+#[test]
 fn no_term_omits_the_uptime_row() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .args(["--no-term"])

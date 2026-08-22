@@ -158,8 +158,8 @@ Tasks:
 - [ ] Homebrew formula (`brew tap` or upstream formula).
 - [x] `cargo install --path .` documented for local installation.
 - [ ] A curated `docs/` set: usage, configuration/flag reference, layout behavior.
-- [ ] No silently unsupported platform surfacing regressions: add a `--probe`/`--debug-sysinfo`
-      flag that dumps what was detected (helps users file good issues).
+- [x] No silently unsupported platform surfacing regressions: `--probe`/`--debug-sysinfo` dumps
+      what was detected to help users file good issues.
 - [ ] 30-day "no open launch-blockers" criterion: any bug tagged `blocker` must be fixed or
       explicitly deferred with a reason before release.
 
