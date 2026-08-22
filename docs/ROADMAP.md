@@ -139,8 +139,8 @@ Tasks:
 
 **Phase 3 gate:**
 - [x] `--help` and `--version` are accurate and consistent.
-- [ ] No-icons, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
-      checks.
+- [x] No-icons, ANSI, piping, and `NO_COLOR` are covered by the macOS/Linux CI matrix and a local
+      PTY check.
 - [x] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
       renders.
 - [x] Size trend remains within the earned feature budget after all flags + logo.
