@@ -778,6 +778,7 @@ fn parse_millidegrees(value: &str) -> Option<i64> {
     (value > -273_150).then_some(value / 1000)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse_ioreg_temperature(info: &str) -> Option<i64> {
     info.lines().find_map(|line| {
         let value = line.split_once("temperature")?.1.split_once('=')?.1.trim();
@@ -822,6 +823,7 @@ fn parse_drm_uevent(info: &str) -> Option<String> {
     })
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse_system_profiler_gpu(info: &str) -> Option<String> {
     info.lines().find_map(|line| {
         line.trim()
