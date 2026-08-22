@@ -166,7 +166,7 @@ Tasks:
 **Phase 4 gate:**
 - [ ] CI builds green and artifact size remains within the measured budget for all target triples.
 - [ ] `cargo install minfetch` and the Homebrew formula both work in a clean env.
-- [ ] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
+- [x] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
 - [ ] No open `blocker`-tagged issues.
 
 ---

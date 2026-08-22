@@ -46,6 +46,22 @@ An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
 JSON output is feature-gated: build with `cargo build --features json` before
 using `--json`.
 
+## tmux and zsh
+
+Install `minfetch` so it is on your `PATH`, then run it in a pane:
+
+```sh
+tmux split-window -h 'minfetch --no-term'
+```
+
+For a compact plain-text pane, use:
+
+```sh
+minfetch --no-term --no-icons --color never
+```
+
+minfetch takes one snapshot and exits. It does not start a watch loop.
+
 ## Project direction
 
 See [`docs/VISION.md`](docs/VISION.md) for the product direction
