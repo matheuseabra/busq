@@ -14,6 +14,7 @@ Requires a current stable Rust toolchain.
 ```sh
 cargo run --release
 cargo test --release
+cargo install --path .
 ```
 
 Useful flags:
