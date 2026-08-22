@@ -54,3 +54,24 @@ jobs:
 
       - name: Build (release)
         run: cargo build --locked --release
+
+  reproducible-release:
+    name: reproducible release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build identical release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH=1700000000
+          export CARGO_INCREMENTAL=0
+          cargo build --locked --release --target-dir target/repro-a
+          cargo build --locked --release --target-dir target/repro-b
+          sha256sum target/repro-a/release/minfetch target/repro-b/release/minfetch
+          cmp target/repro-a/release/minfetch target/repro-b/release/minfetch

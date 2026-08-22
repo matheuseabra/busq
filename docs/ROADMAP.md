@@ -138,22 +138,23 @@ Tasks:
 - [x] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
 
 **Phase 3 gate:**
-- [ ] `--help` and `--version` are accurate and consistent.
+- [x] `--help` and `--version` are accurate and consistent.
 - [ ] No-icons, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
       checks.
 - [x] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
       renders.
-- [ ] Size trend remains within the earned feature budget after all flags + logo.
+- [x] Size trend remains within the earned feature budget after all flags + logo.
 
 ---
 
-## Phase 4 — Distribution & hardening (v1.0)
+## Phase 4 — Distribution & hardening (v1.0, started)
 
 **Goal:** a dependable, distributable `v1.0`.
 
 Tasks:
 - [ ] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
-- [ ] Reproducible builds (deterministic; document or enforce e.g. `SOURCE_DATE_EPOCH`).
+- [x] Reproducible builds enforced in CI with a fixed `SOURCE_DATE_EPOCH` and byte-identical
+      release binaries.
 - [ ] Homebrew formula (`brew tap` or upstream formula) + a `cargo install` line in README.
 - [ ] A curated `docs/` set: usage, configuration/flag reference, layout behavior.
 - [ ] No silently unsupported platform surfacing regressions: add a `--probe`/`--debug-sysinfo`

@@ -39,6 +39,17 @@ fn forced_color_stays_plain_when_stdout_is_piped() {
 }
 
 #[test]
+fn no_color_environment_stays_plain() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(!output.stdout.windows(2).any(|bytes| bytes == b"\x1b["));
+}
+
+#[test]
 fn no_icons_alias_removes_row_symbols() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .arg("--no-icons")
