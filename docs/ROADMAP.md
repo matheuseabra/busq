@@ -135,11 +135,11 @@ Tasks:
 - [x] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
       platforms. (Full Windows support may move to Phase 4.)
 - [x] CI adds a third job for Windows (build-only, tests conditional where possible).
-- [ ] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
+- [x] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
 
 **Phase 3 gate:**
 - [ ] `--help` and `--version` are accurate and consistent.
-- [ ] No-ICO, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
+- [ ] No-icons, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
       checks.
 - [x] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
       renders.

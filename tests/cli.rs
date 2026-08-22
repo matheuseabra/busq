@@ -1,5 +1,8 @@
 use std::{fs, process::Command};
 
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+
 #[test]
 fn piped_output_is_plain_and_has_no_logo() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
@@ -47,6 +50,22 @@ fn no_icons_alias_removes_row_symbols() {
 }
 
 #[test]
+fn help_and_version_include_the_current_version() {
+    let help = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--help")
+        .output()
+        .expect("run help");
+    let version = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--version")
+        .output()
+        .expect("run version");
+
+    let version_text = String::from_utf8_lossy(&version.stdout);
+    assert!(help.status.success() && version.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains(version_text.trim()));
+}
+
+#[test]
 fn no_term_omits_the_uptime_row() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .args(["--no-term"])
@@ -70,6 +89,36 @@ fn empty_shell_is_rendered_as_missing() {
             .lines()
             .any(|line| line.contains("shell") && line.ends_with('—'))
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_user_is_rendered_as_missing() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env("USER", std::ffi::OsString::from_vec(vec![0xff]))
+        .env_remove("USERNAME")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains("user") && line.ends_with('—'))
+    );
+}
+
+#[test]
+fn unicode_identity_values_render_without_loss() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env("HOSTNAME", "机器")
+        .env("USER", "José")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("机器") && stdout.contains("José"));
 }
 
 #[test]

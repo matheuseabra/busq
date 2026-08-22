@@ -781,6 +781,12 @@ mod tests {
     }
 
     #[test]
+    fn missing_proc_fixtures_stay_unavailable() {
+        assert!(parse_cpuinfo("").is_none());
+        assert!(mem_kib("not proc data", "MemTotal").is_none());
+    }
+
+    #[test]
     fn piped_output_never_loads_a_logo() {
         assert!(load_logo(Some("/definitely/not/a/logo"), false).is_none());
     }
