@@ -51,6 +51,8 @@ struct Options {
     no_terminator: bool,
     no_term: bool,
     verbose: bool,
+    #[cfg(feature = "json")]
+    json: bool,
 }
 
 pub fn version_string() -> String {
@@ -68,8 +70,13 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
-            version_string()
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
+            version_string(),
+            if cfg!(feature = "json") {
+                " [--json]"
+            } else {
+                ""
+            }
         );
         return;
     }
@@ -81,6 +88,16 @@ fn main() {
         for error in errors {
             eprintln!("  ↳ {error}");
         }
+    }
+    #[cfg(feature = "json")]
+    if options.json {
+        let output = render_json(&fetched_rows);
+        if options.no_terminator {
+            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+        } else {
+            print!("{output}");
+        }
+        return;
     }
     let output = render_with_color(
         &fetched_rows,
@@ -120,6 +137,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         no_terminator: false,
         no_term: false,
         verbose: false,
+        #[cfg(feature = "json")]
+        json: false,
     };
     let mut help = false;
     let mut version = false;
@@ -152,6 +171,14 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
+            "--json" => {
+                #[cfg(feature = "json")]
+                {
+                    options.json = true;
+                }
+                #[cfg(not(feature = "json"))]
+                return Err("--json requires rebuilding with --features json".into());
+            }
             "--icons" => {
                 options.icons = match args.next().as_deref() {
                     Some("on") => true,
@@ -492,6 +519,41 @@ fn render_with_color(
     }
 }
 
+#[cfg(feature = "json")]
+fn render_json(rows: &[(String, String)]) -> String {
+    let rows = rows
+        .iter()
+        .map(|(label, value)| {
+            format!(
+                "{{\"label\":\"{}\",\"value\":\"{}\"}}",
+                json_escape(label),
+                json_escape(value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{\"rows\":[{rows}]}}\n")
+}
+
+#[cfg(feature = "json")]
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::new();
+    for character in value.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            character if character.is_control() => {
+                escaped.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => escaped.push(character),
+        }
+    }
+    escaped
+}
+
 fn colorize(value: &str, color: bool) -> String {
     if color {
         format!("{ANSI_LABEL}{value}{ANSI_RESET}")
@@ -774,6 +836,16 @@ mod tests {
             Some(["os".into(), "user".into()].as_slice())
         );
         assert_eq!(config.theme, Some(Theme::Mono));
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn json_output_escapes_row_values() {
+        let rows = vec![("user\"name".into(), "line\nvalue".into())];
+        assert_eq!(
+            super::render_json(&rows),
+            "{\"rows\":[{\"label\":\"user\\\"name\",\"value\":\"line\\nvalue\"}]}\n"
+        );
     }
 
     #[test]

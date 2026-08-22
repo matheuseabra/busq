@@ -114,3 +114,15 @@ fn config_defaults_apply_and_flags_override_them() {
     assert!(!configured_stdout.contains("hostname"));
     assert!(overridden_stdout.contains("• os"));
 }
+
+#[cfg(not(feature = "json"))]
+#[test]
+fn json_explains_the_feature_build_requirement() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--json")
+        .output()
+        .expect("run minfetch");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--features json"));
+}

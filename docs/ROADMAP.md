@@ -129,7 +129,7 @@ Tasks:
       the underlying error line in a tooltip style on stderr.
 - [x] Optional config file for default rows, logo, icons, and theme; flags override it.
 - [x] Small preset theme set around the subtle default (`subtle` and `mono`).
-- [ ] Feature-gated JSON emitter, excluded from the default binary.
+- [x] Feature-gated JSON emitter, excluded from the default binary.
 - [ ] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
       the default.
 - [ ] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three

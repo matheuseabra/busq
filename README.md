@@ -27,6 +27,7 @@ Useful flags:
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
 --theme subtle|mono    Select the default color theme
+--json                 Emit rows as JSON (feature build only)
 --no-term              Omit the uptime row
 --no-terminator        Omit the final newline
 --verbose              Print fetch failures to stderr
@@ -39,6 +40,9 @@ An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
 `$HOME/.config/minfetch/config`) accepts `color`, `icons`, `logo`, `rows`, and
 `theme` keys as `key = value`; command-line flags override its defaults. Use
 `--config PATH` to select another file.
+
+JSON output is feature-gated: build with `cargo build --features json` before
+using `--json`.
 
 ## Project direction
 
