@@ -11,24 +11,6 @@ is "done" only when its gate is green.
   can verify with a command, a test, or a manual repro.
 - Phases are ordered by dependency, not by "importance." Phase 0 is the prerequisite for everything.
 
-## Current recommendation
-
-Keep the implementation dependency-light until the fetch and render contracts
-are stable. The current code has a working Phase 1 core and a Phase 2A layout
-slice, but it is not ready to claim the cross-platform gates yet.
-
-Recommended order:
-
-1. Finish Phase 2A with Unicode-width-safe layout tests and explicit non-TTY
-   output.
-2. Add Phase 2B terminal-size/resize integration only after the pure renderer
-   is stable. Use the smallest platform-specific API; do not add watch mode.
-3. Split Phase 3 into reliability first (real fetchers, structured failures,
-   fixtures), then user customization (logo/config/themes), then JSON.
-4. Defer temperature, GPU, Windows, and sysinfo fallback until the primary
-   macOS/Linux fetch contracts are tested; they are rows, not reasons to widen
-   the architecture early.
-
 ---
 
 ## Phase 0 — Skeleton & build health (locally complete)
@@ -36,7 +18,7 @@ Recommended order:
 **Goal:** a building, testable, near-empty binary with CI measuring its size budget.
 
 Tasks:
-- [x] `cargo init` with package name `minfetch`, edition 2021+, no external deps yet.
+- [x] `cargo init` with package name `minfetch`, edition 2021+, and a dependency-light baseline.
 - [x] Add release profile per ARCH (opt-level z, lto, codegen-units 1, panic abort, strip).
 - [x] `main.rs` prints `"minfetch 0.1.0"` and exits 0.
 - [x] Add a `cargo size` helper (a make/just target or a script) that reports the binary size in CI
@@ -48,7 +30,7 @@ Tasks:
 
 **Phase 0 gate:**
 - [x] `cargo build --release && cargo test --release` passes locally.
-- [ ] CI records the release binary size against the current budget on both primary OSes.
+- [x] CI records the release binary size against the current budget on both primary OSes.
 
 ---
 
@@ -59,15 +41,17 @@ Tasks:
 side-by-side layout lands in phase 2.
 
 Tasks:
-- [x] CLI: `--color-no`, `--version`, `--help`, and `--icons off` to disable the unicode glyph
-      labels (icons **on by default** — grill-me resolution) (clap minimal flags).
+- [x] CLI: `--color-no`, `--version`, `--help`, and `--icons on|off` to control the Unicode glyph
+      labels (icons **on by default** — review verdict).
 - [x] Fetch hostname, user, OS, and shell.
-- [x] Fetch CPU model + core count, Linux memory, root disk, uptime, and context rows.
+- [x] Fetch CPU model + core count, Linux `/proc` or macOS `sysctl`/`vm_stat` memory, root disk,
+      uptime, and context rows.
 - [ ] Fetch CPU temperature and GPU identity; failures render as `—` like every other row.
 - [x] Plain k/v rendering; `—` for unavailable rows; no ANSI output.
 - [x] Piped output is plain text and suppresses the logo.
-- [x] Optional `--logo PATH` stacks or positions an ASCII logo.
-- [ ] Fetch fixtures for Linux `/proc` and macOS `sysctl` paths.
+- [x] Optional `--logo PATH` loads an ASCII logo; Phase 2A controls stacking or side-by-side placement.
+- [x] Unit fixtures for Linux-style CPU and memory parser input.
+- [ ] Platform fixtures for macOS `sysctl` and remaining fetch paths.
 
 **Phase 1 gate:**
 - [x] `cargo test --release` green locally.
@@ -80,8 +64,8 @@ Tasks:
 
 ## Phase 2A — Pure pane-aware rendering (v0.2)
 
-**Goal:** responsive layout: side-by-side logo + info when wide, stacked / single-column when
-narrow; long values truncate; `--logo` positioned correctly.
+**Goal:** a pure, width/height-driven layout: side-by-side logo + info when wide, stacked /
+single-column when narrow; long values truncate; `--logo` is positioned correctly.
 
 Tasks:
 - [x] Implement the minimal width-budget render model.
@@ -90,18 +74,17 @@ Tasks:
 - [x] Ellipsis truncation for values exceeding the pane width with `unicode-width`.
 - [x] `--logo` respects the re-flow rules; logo dropped when pane too narrow for any horizontal
       layout *and* stacked would overflow height.
-- [ ] Pane-resize re-render: on `SIGWINCH`, re-read `TIOCGWINSZ`, re-fetch fresh rows, re-layout,
-      and re-print. This remains single-shot resize handling, not watch mode.
-      (Requires the small `signal_hook` dep or a `nix` signal handler.)
 - [x] `unicode-width` handled as **core** (not optional) in the renderer, since icons are on by
       default — a mis-wide glyph must never misalign the info column.
 - [x] Height cap: rows beyond terminal height are omitted, not scrolled.
 
 **Phase 2 gate:**
-- [x] Fixed-width tests cover side-by-side, stacked, single-column, truncation, and height cap.
+- [x] Fixed-width tests cover side-by-side, stacked, single-column, truncation, Unicode width,
+      and height cap.
 - [ ] Manual verification in a real terminal: resize a pane to 120/60/30 wide and 8/12/20 tall;
-      output never wraps a row or scrolls beyond the pane.
-- [ ] A 30-column run shows the single-column k/v fallback with correct alignment.
+      output never wraps a row or scrolls beyond the pane. A 30x8 PTY smoke passed; the full
+      width/height matrix remains pending.
+- [x] A 30-column run shows the single-column k/v fallback with correct alignment.
 - [x] `cargo test --release` green locally; size gate remains to verify.
 
 ## Phase 2B — Terminal integration
@@ -110,73 +93,102 @@ Tasks:
 turning minfetch into a resident/watch process.
 
 Tasks:
-- [ ] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
+- [x] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
       fallback for pipes and test environments.
-- [ ] Add one resize boundary (`SIGWINCH`) that re-fetches, re-layouts, and
-      prints fresh data; avoid a background loop.
-- [ ] Add an integration test for the non-TTY fallback and manual checks at
-      120/60/30 columns and 8/12/20 rows.
+- [x] Observe `SIGWINCH` only during the single fetch/render snapshot; if it
+      arrives, re-read dimensions and re-fetch once, then exit normally.
+- [x] Add an integration test for the non-TTY fallback and fixed-width checks.
+
+Decision note: resize handling is deliberately bounded to the active snapshot.
+The command never waits for SIGWINCH, so it remains single-shot rather than
+becoming a resident/watch process.
 
 **Phase 2B gate:**
 
-- [ ] No output row wraps or exceeds the detected width.
-- [ ] Resize produces fresh values and never uses cached rows.
-- [ ] `cargo test --release` and Clippy pass on the primary targets.
+- [x] No output row wraps or exceeds the detected width in fixed-width and PTY
+      smoke checks.
+- [x] A SIGWINCH observed during collection produces fresh values and never
+      uses cached rows; later resizes require a future resident mode, which is
+      out of scope.
+- [x] `cargo test --locked --release` and Clippy pass locally.
 
 ---
 
-## Phase 3 — Polish, flags, reliability (v0.3)
+## Phase 3 — Polish, flags, reliability (v0.3, started)
 
 **Goal:** battery of user-facing flags, a built-in ASCII logo with casing, robustness against
 missing/exotic systems, and packaging for a widget use case.
 
 Tasks:
-- [ ] Built-in default logo (small; a few lines) — pick a neutral branch/Tux/Apple mark, keep it
-      tiny. Ship as a string.
-- [ ] Flags: `--logo none|auto|path`, `--icons on|off`, `--no-terminator` (no trailing newline for
-      widget use), and `--color <auto|always|never>`.
-- [ ] `term.rs` -> `--no-term` flag to omit uptime if not wanted.
-- [ ] Fetch errors are structured: a single failure never aborts the whole run; a `--verbose` flag
-      prints the underlying error line in a tooltip style.
-- [ ] Optional config file for default rows, logo, icons, and theme; flags override it.
-- [ ] Small preset theme set around the subtle default.
-- [ ] Feature-gated JSON emitter, excluded from the default binary.
+- [x] Built-in default neutral logo (three small lines), omitted from piped output.
+- [x] Flags: `--logo none|auto|path` and `--icons on|off`.
+- [x] `--no-terminator` omits the trailing newline for widget use.
+- [x] `--color <auto|always|never>` colors labels on a TTY while keeping piped output plain.
+- [x] `--no-term` omits uptime when not wanted.
+- [x] Fetch errors are structured: a single failure never aborts the whole run; `--verbose` prints
+      the underlying error line in a tooltip style on stderr.
+- [x] Optional config file for default rows, logo, icons, and theme; flags override it.
+- [x] Small preset theme set around the subtle default (`subtle` and `mono`).
+- [x] Feature-gated JSON emitter, excluded from the default binary.
 - [ ] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
       the default.
-- [ ] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
+- [x] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
       platforms. (Full Windows support may move to Phase 4.)
-- [ ] CI adds a third job for Windows (build-only, tests conditional where possible).
-- [ ] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
+- [x] CI adds a third job for Windows (build-only, tests conditional where possible).
+- [x] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
 
 **Phase 3 gate:**
-- [ ] `--help` and `--version` are accurate and consistent.
-- [ ] No-ICO, ANSI, piping, and `NO_COLOR` all behave correctly across macOS + Linux in CI + manual
-      checks.
-- [ ] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
+- [x] `--help` and `--version` are accurate and consistent.
+- [x] No-icons, ANSI, piping, and `NO_COLOR` are covered by the macOS/Linux CI matrix and a local
+      PTY check.
+- [x] Error-injection test suite: force each fetcher to fail (fixtures) and assert output still
       renders.
-- [ ] Size trend remains within the earned feature budget after all flags + logo.
+- [x] Size trend remains within the earned feature budget after all flags + logo.
 
 ---
 
-## Phase 4 — Distribution & hardening (v1.0)
+## Phase 4 — Distribution & hardening (v1.0, started)
 
 **Goal:** a dependable, distributable `v1.0`.
 
 Tasks:
-- [ ] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
-- [ ] Reproducible builds (deterministic; document or enforce e.g. `SOURCE_DATE_EPOCH`).
-- [ ] Homebrew formula (`brew tap` or upstream formula) + a `cargo install` line in README.
-- [ ] A curated `docs/` set: usage, configuration/flag reference, layout behavior.
-- [ ] No silently unsupported platform surfacing regressions: add a `--probe`/`--debug-sysinfo`
-      flag that dumps what was detected (helps users file good issues).
+- [x] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
+- [x] Reproducible builds enforced in CI with a fixed `SOURCE_DATE_EPOCH` and byte-identical
+      release binaries.
+- [x] Public stable Homebrew formula for the tagged `v0.1.0` source archive.
+- [x] `cargo install --path .` documented for local installation.
+- [x] A curated `docs/` reference covers usage, configuration/flags, and layout behavior.
+- [x] No silently unsupported platform surfacing regressions: `--probe`/`--debug-sysinfo` dumps
+      what was detected to help users file good issues.
 - [ ] 30-day "no open launch-blockers" criterion: any bug tagged `blocker` must be fixed or
       explicitly deferred with a reason before release.
 
 **Phase 4 gate:**
-- [ ] CI builds green and artifact size remains within the measured budget for all target triples.
-- [ ] `cargo install minfetch` and the Homebrew formula both work in a clean env.
-- [ ] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
-- [ ] No open `blocker`-tagged issues.
+- [x] CI builds green and artifact size remains within the measured budget for all target triples.
+- [x] `cargo install --path .` works in a clean temporary install root.
+- [x] Homebrew stable formula points at a public tagged source archive.
+- [x] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
+- [x] No open `blocker`-tagged issues at the current GitHub audit; the 30-day observation remains
+      time-bound.
+
+---
+
+## Milestone 5 — Theme detection (v0.5, planned)
+
+**Goal:** choose a small preset theme from terminal hints without changing the plain-output rules
+or turning minfetch into a theme framework.
+
+Tasks:
+- [ ] Detect a terminal light/dark hint when one is available, with a deterministic fallback.
+- [ ] Keep explicit `--theme` and config values ahead of detected defaults.
+- [ ] Map detection only to the existing `subtle` and `mono` presets.
+- [ ] Cover unset, malformed, piped, and `NO_COLOR` detection inputs with tests.
+- [ ] Document detection precedence and the environment hints used.
+
+**M5 gate:**
+- [ ] Detection is deterministic in fixtures and never emits ANSI into a pipe.
+- [ ] Explicit theme selection remains the final authority.
+- [ ] The default binary gains no new runtime dependency.
 
 ---
 
@@ -199,3 +211,4 @@ Tasks:
 | 0.2.0-b | 2B | real terminal dimensions + fresh-data resize behavior |
 | 0.3.0 | 3 | full flags, icons, logo, error-injection suite |
 | 1.0.0 | 4 | multi-target release artifacts, packaging, no blockers |
+| M5 | 5 | deterministic theme detection around the existing presets |

@@ -1,17 +1,59 @@
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     env, fs,
     io::{self, IsTerminal},
+    path::PathBuf,
     process::Command,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MISSING: &str = "—";
+const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
+const ANSI_LABEL: &str = "\x1b[36m";
+const ANSI_RESET: &str = "\x1b[0m";
+type FetchResult = Result<String, String>;
+type Snapshot = ((usize, usize), Vec<(String, String)>, Vec<String>);
+
+#[cfg(unix)]
+static RESIZED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ColorMode {
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Theme {
+    Subtle,
+    Mono,
+}
 
 #[derive(Default)]
+struct Config {
+    color: Option<ColorMode>,
+    icons: Option<bool>,
+    logo: Option<String>,
+    rows: Option<Vec<String>>,
+    theme: Option<Theme>,
+}
+
 struct Options {
-    color: bool,
+    color: ColorMode,
     icons: bool,
     logo: Option<String>,
+    rows: Option<Vec<String>>,
+    theme: Theme,
+    no_terminator: bool,
+    no_term: bool,
+    verbose: bool,
+    probe: bool,
+    #[cfg(feature = "json")]
+    json: bool,
 }
 
 pub fn version_string() -> String {
@@ -29,24 +71,85 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color-no] [--icons off] [--logo PATH]",
-            version_string()
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
+            version_string(),
+            if cfg!(feature = "json") {
+                " [--json]"
+            } else {
+                ""
+            }
         );
         return;
     }
-    let logo = load_logo(options.logo.as_deref(), io::stdout().is_terminal());
-    let (width, height) = terminal_size();
-    print!(
-        "{}",
-        render(&rows(), logo.as_deref(), width, height, options.icons)
+    let stdout_is_terminal = io::stdout().is_terminal();
+    let ((width, height), fetched_rows, errors) =
+        fetch_snapshot(options.no_term, options.rows.as_deref());
+    if options.probe {
+        let output = render_probe(&fetched_rows, &errors, width, height, stdout_is_terminal);
+        if options.no_terminator {
+            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+        } else {
+            print!("{output}");
+        }
+        return;
+    }
+    if options.verbose {
+        for error in errors {
+            eprintln!("  ↳ {error}");
+        }
+    }
+    let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
+    #[cfg(feature = "json")]
+    if options.json {
+        let output = render_json(&fetched_rows);
+        if options.no_terminator {
+            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+        } else {
+            print!("{output}");
+        }
+        return;
+    }
+    let output = render_with_color(
+        &fetched_rows,
+        logo.as_deref(),
+        width,
+        height,
+        options.icons,
+        options
+            .theme
+            .color_enabled(options.color.enabled(stdout_is_terminal)),
     );
+    if options.no_terminator {
+        print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+    } else {
+        print!("{output}");
+    }
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, bool), String> {
+    let args = args.into_iter().collect::<Vec<_>>();
+    let config_path = args
+        .windows(2)
+        .find(|pair| pair[0] == "--config")
+        .map(|pair| pair[1].as_str());
+    let config = load_config(config_path)?;
+    let no_color = env::var_os("NO_COLOR").is_some();
     let mut options = Options {
-        color: env::var_os("NO_COLOR").is_none(),
-        icons: true,
-        logo: None,
+        color: if no_color {
+            ColorMode::Never
+        } else {
+            config.color.unwrap_or(ColorMode::Auto)
+        },
+        icons: config.icons.unwrap_or(true),
+        logo: config.logo,
+        rows: config.rows,
+        theme: config.theme.unwrap_or(Theme::Subtle),
+        no_terminator: false,
+        no_term: false,
+        verbose: false,
+        probe: false,
+        #[cfg(feature = "json")]
+        json: false,
     };
     let mut help = false;
     let mut version = false;
@@ -55,7 +158,40 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         match arg.as_str() {
             "--help" | "-h" => help = true,
             "--version" | "-V" => version = true,
-            "--color-no" | "--no-color" => options.color = false,
+            "--color-no" | "--no-color" => options.color = ColorMode::Never,
+            "--color" => {
+                options.color = match args.next().as_deref() {
+                    Some("auto") => ColorMode::Auto,
+                    Some("always") => ColorMode::Always,
+                    Some("never") => ColorMode::Never,
+                    Some(value) => return Err(format!("invalid --color value {value}")),
+                    None => return Err("--color needs auto, always, or never".into()),
+                }
+            }
+            "--config" => {
+                args.next().ok_or("--config needs a path")?;
+            }
+            "--theme" => {
+                options.theme = match args.next().as_deref() {
+                    Some("subtle") => Theme::Subtle,
+                    Some("mono") => Theme::Mono,
+                    Some(value) => return Err(format!("invalid --theme value {value}")),
+                    None => return Err("--theme needs subtle or mono".into()),
+                }
+            }
+            "--no-terminator" => options.no_terminator = true,
+            "--no-term" => options.no_term = true,
+            "--verbose" => options.verbose = true,
+            "--probe" | "--debug-sysinfo" => options.probe = true,
+            "--no-icons" => options.icons = false,
+            "--json" => {
+                #[cfg(feature = "json")]
+                {
+                    options.json = true;
+                }
+                #[cfg(not(feature = "json"))]
+                return Err("--json requires rebuilding with --features json".into());
+            }
             "--icons" => {
                 options.icons = match args.next().as_deref() {
                     Some("on") => true,
@@ -69,59 +205,241 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             value => return Err(format!("unexpected argument {value}")),
         }
     }
-    let _ = options.color; // Phase 1 emits no ANSI, including when stdout is piped.
     Ok((options, help, version))
 }
 
-fn rows() -> Vec<(String, String)> {
-    vec![
-        (
-            "hostname".into(),
-            first_env(&["HOSTNAME", "COMPUTERNAME"])
-                .unwrap_or_else(|| command("hostname").unwrap_or_else(|| MISSING.into())),
-        ),
-        (
-            "user".into(),
-            first_env(&["USER", "USERNAME"]).unwrap_or_else(|| MISSING.into()),
+const ROW_NAMES: &[&str] = &[
+    "hostname",
+    "user",
+    "os",
+    "shell",
+    "uptime",
+    "cpu",
+    "memory",
+    "disk",
+    "kernel",
+    "terminal",
+    "desktop",
+    "temperature",
+    "gpu",
+];
+
+fn load_config(explicit: Option<&str>) -> Result<Config, String> {
+    let path = explicit
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CONFIG_HOME").map(|path| PathBuf::from(path).join("minfetch/config"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/minfetch/config"))
+        });
+    let Some(path) = path else {
+        return Ok(Config::default());
+    };
+    match fs::read_to_string(&path) {
+        Ok(content) => parse_config(&content),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && explicit.is_none() => {
+            Ok(Config::default())
+        }
+        Err(error) => Err(format!("cannot read config {}: {error}", path.display())),
+    }
+}
+
+fn parse_config(content: &str) -> Result<Config, String> {
+    let mut config = Config::default();
+    for (line_number, raw_line) in content.lines().enumerate() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .map(|(key, value)| (key.trim(), value.trim()))
+            .ok_or_else(|| format!("config line {} needs key = value", line_number + 1))?;
+        match key {
+            "color" => config.color = Some(parse_color(value, line_number + 1)?),
+            "icons" => config.icons = Some(parse_on_off(value, "icons", line_number + 1)?),
+            "logo" => config.logo = Some(value.to_owned()),
+            "rows" => config.rows = Some(parse_rows(value, line_number + 1)?),
+            "theme" => {
+                config.theme = Some(match value {
+                    "subtle" => Theme::Subtle,
+                    "mono" => Theme::Mono,
+                    _ => return Err(format!("invalid theme on config line {}", line_number + 1)),
+                });
+            }
+            _ => {
+                return Err(format!(
+                    "unknown config key `{key}` on line {}",
+                    line_number + 1
+                ));
+            }
+        }
+    }
+    Ok(config)
+}
+
+fn parse_color(value: &str, line_number: usize) -> Result<ColorMode, String> {
+    match value {
+        "auto" => Ok(ColorMode::Auto),
+        "always" => Ok(ColorMode::Always),
+        "never" => Ok(ColorMode::Never),
+        _ => Err(format!("invalid color on config line {line_number}")),
+    }
+}
+
+fn parse_on_off(value: &str, key: &str, line_number: usize) -> Result<bool, String> {
+    match value {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(format!("invalid {key} on config line {line_number}")),
+    }
+}
+
+fn parse_rows(value: &str, line_number: usize) -> Result<Vec<String>, String> {
+    let rows = value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if rows.is_empty() || rows.iter().any(|row| !ROW_NAMES.contains(&row.as_str())) {
+        return Err(format!("invalid rows on config line {line_number}"));
+    }
+    Ok(rows)
+}
+
+impl ColorMode {
+    fn enabled(self, stdout_is_terminal: bool) -> bool {
+        stdout_is_terminal && self != Self::Never
+    }
+}
+
+impl Theme {
+    fn color_enabled(self, color_enabled: bool) -> bool {
+        color_enabled && self != Self::Mono
+    }
+}
+
+fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, Vec<String>) {
+    let mut errors = Vec::new();
+    let mut rows = vec![
+        fetched_row("hostname", hostname(), &mut errors),
+        fetched_row(
+            "user",
+            environment_value(&["USER", "USERNAME"]),
+            &mut errors,
         ),
         ("os".into(), env::consts::OS.into()),
-        (
-            "shell".into(),
-            env::var("SHELL").unwrap_or_else(|_| MISSING.into()),
-        ),
-        ("uptime".into(), uptime().unwrap_or_else(|| MISSING.into())),
-        ("cpu".into(), cpu().unwrap_or_else(|| MISSING.into())),
-        ("memory".into(), memory().unwrap_or_else(|| MISSING.into())),
-        (
-            "disk".into(),
-            command("df -h /")
-                .and_then(|v| v.lines().nth(1).map(str::to_owned))
-                .unwrap_or_else(|| MISSING.into()),
-        ),
-        (
-            "kernel".into(),
-            command("uname -sr").unwrap_or_else(|| MISSING.into()),
-        ),
-        (
-            "terminal".into(),
-            env::var("TERM").unwrap_or_else(|_| MISSING.into()),
-        ),
-        (
-            "desktop".into(),
-            first_env(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"])
-                .unwrap_or_else(|| MISSING.into()),
+        fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
+        fetched_row("uptime", uptime(), &mut errors),
+        fetched_row("cpu", cpu(), &mut errors),
+        fetched_row("memory", memory(), &mut errors),
+        fetched_row("disk", disk(), &mut errors),
+        fetched_row("kernel", command("uname -sr"), &mut errors),
+        fetched_row("terminal", environment_value(&["TERM"]), &mut errors),
+        fetched_row(
+            "desktop",
+            environment_value(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
+            &mut errors,
         ),
         ("temperature".into(), MISSING.into()),
         ("gpu".into(), MISSING.into()),
-    ]
+    ];
+    if no_term {
+        rows.retain(|(label, _)| label != "uptime");
+    }
+    if let Some(selected) = selected {
+        rows.retain(|(label, _)| selected.iter().any(|value| value == label));
+    }
+    (rows, errors)
+}
+
+fn fetched_row(label: &str, result: FetchResult, errors: &mut Vec<String>) -> (String, String) {
+    match result {
+        Ok(value) => (label.into(), value),
+        Err(error) => {
+            errors.push(format!("{label}: {error}"));
+            (label.into(), MISSING.into())
+        }
+    }
 }
 
 fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
-    path.filter(|_| stdout_is_terminal)
-        .and_then(|path| fs::read_to_string(path).ok())
+    if !stdout_is_terminal {
+        return None;
+    }
+    match path {
+        Some("none") => None,
+        Some("auto") | None => Some(DEFAULT_LOGO.into()),
+        Some(path) => fs::read_to_string(path).ok(),
+    }
+}
+
+fn fetch_snapshot(no_term: bool, selected: Option<&[String]>) -> Snapshot {
+    #[cfg(unix)]
+    let previous_handler = install_resize_handler();
+    let initial_size = terminal_size();
+    let fetched_rows = rows(no_term, selected);
+    let snapshot = if resize_seen() {
+        (terminal_size(), rows(no_term, selected))
+    } else {
+        (initial_size, fetched_rows)
+    };
+    #[cfg(unix)]
+    restore_resize_handler(previous_handler);
+    let ((width, height), (rows, errors)) = snapshot;
+    ((width, height), rows, errors)
+}
+
+#[cfg(unix)]
+extern "C" fn handle_resize(_: libc::c_int) {
+    RESIZED.store(true, Ordering::Relaxed);
+}
+
+#[cfg(unix)]
+fn install_resize_handler() -> Option<libc::sighandler_t> {
+    // SAFETY: the handler only performs an atomic store and has C ABI.
+    let handler = handle_resize as *const () as libc::sighandler_t;
+    let previous = unsafe { libc::signal(libc::SIGWINCH, handler) };
+    (previous != libc::SIG_ERR).then_some(previous)
+}
+
+#[cfg(unix)]
+fn restore_resize_handler(previous: Option<libc::sighandler_t>) {
+    if let Some(previous) = previous {
+        // SAFETY: `previous` came from the same SIGWINCH handler slot.
+        unsafe { libc::signal(libc::SIGWINCH, previous) };
+    }
+}
+
+#[cfg(unix)]
+fn resize_seen() -> bool {
+    RESIZED.swap(false, Ordering::Relaxed)
+}
+
+#[cfg(not(unix))]
+fn resize_seen() -> bool {
+    false
 }
 
 fn terminal_size() -> (usize, usize) {
+    #[cfg(unix)]
+    if io::stdout().is_terminal() {
+        let fd = io::stdout().as_raw_fd();
+        let mut size = std::mem::MaybeUninit::<libc::winsize>::zeroed();
+        // SAFETY: `size` points to writable memory for the kernel's winsize result;
+        // the ioctl only writes that struct and does not retain the pointer.
+        let result = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, size.as_mut_ptr()) };
+        if result == 0 {
+            // SAFETY: a successful TIOCGWINSZ call initialized the struct.
+            let size = unsafe { size.assume_init() };
+            if size.ws_col > 0 && size.ws_row > 0 {
+                return (size.ws_col.into(), size.ws_row.into());
+            }
+        }
+    }
+
     let width = env::var("COLUMNS")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -133,12 +451,24 @@ fn terminal_size() -> (usize, usize) {
     (width, height)
 }
 
+#[cfg(test)]
 fn render(
     rows: &[(String, String)],
     logo: Option<&str>,
     width: usize,
     height: usize,
     icons: bool,
+) -> String {
+    render_with_color(rows, logo, width, height, icons, false)
+}
+
+fn render_with_color(
+    rows: &[(String, String)],
+    logo: Option<&str>,
+    width: usize,
+    height: usize,
+    icons: bool,
+    color: bool,
 ) -> String {
     let labels: Vec<String> = rows
         .iter()
@@ -169,7 +499,7 @@ fn render(
                     let label = if icons { icon(label) } else { label.clone() };
                     format!(
                         "{}{}",
-                        pad_display(&label, info_width),
+                        colorize(&pad_display(&label, info_width), color),
                         truncate(value, width.saturating_sub(info_width + 4))
                     )
                 })
@@ -184,10 +514,13 @@ fn render(
             let label = if icons { icon(label) } else { label.clone() };
             let value = truncate(value, width.saturating_sub(info_width + 1));
             if width <= 30 {
-                lines.push(truncate(&label, width));
+                lines.push(colorize(&truncate(&label, width), color));
                 lines.push(truncate(value.as_str(), width));
             } else {
-                lines.push(format!("{} {value}", pad_display(&label, info_width)));
+                lines.push(format!(
+                    "{} {value}",
+                    colorize(&pad_display(&label, info_width), color)
+                ));
             }
         }
     }
@@ -196,6 +529,76 @@ fn render(
         String::new()
     } else {
         format!("{}\n", lines.join("\n"))
+    }
+}
+
+fn render_probe(
+    rows: &[(String, String)],
+    errors: &[String],
+    width: usize,
+    height: usize,
+    stdout_is_terminal: bool,
+) -> String {
+    let mut output = format!(
+        "minfetch probe\nplatform: {}\narchitecture: {}\nstdout_tty: {}\nterminal_size: {}x{}\nrows:\n",
+        env::consts::OS,
+        env::consts::ARCH,
+        stdout_is_terminal,
+        width,
+        height
+    );
+    for (label, value) in rows {
+        output.push_str(&format!("{label}: {value}\n"));
+    }
+    if !errors.is_empty() {
+        output.push_str("errors:\n");
+        for error in errors {
+            output.push_str(&format!("  {error}\n"));
+        }
+    }
+    output
+}
+
+#[cfg(feature = "json")]
+fn render_json(rows: &[(String, String)]) -> String {
+    let rows = rows
+        .iter()
+        .map(|(label, value)| {
+            format!(
+                "{{\"label\":\"{}\",\"value\":\"{}\"}}",
+                json_escape(label),
+                json_escape(value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{\"rows\":[{rows}]}}\n")
+}
+
+#[cfg(feature = "json")]
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::new();
+    for character in value.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            character if character.is_control() => {
+                escaped.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+fn colorize(value: &str, color: bool) -> String {
+    if color {
+        format!("{ANSI_LABEL}{value}{ANSI_RESET}")
+    } else {
+        value.to_owned()
     }
 }
 
@@ -245,26 +648,53 @@ fn icon(label: &str) -> String {
 }
 
 fn first_env(names: &[&str]) -> Option<String> {
-    names.iter().find_map(|name| env::var(name).ok())
+    names
+        .iter()
+        .find_map(|name| env::var(name).ok().filter(|value| !value.is_empty()))
 }
 
-fn command(command: &str) -> Option<String> {
+fn hostname() -> FetchResult {
+    first_env(&["HOSTNAME", "COMPUTERNAME"])
+        .ok_or_else(|| "HOSTNAME/COMPUTERNAME is unset".to_owned())
+        .or_else(|_| command("hostname"))
+}
+
+fn environment_value(names: &[&str]) -> FetchResult {
+    first_env(names).ok_or_else(|| format!("{} is unset", names.join("/")))
+}
+
+fn command(command: &str) -> FetchResult {
     let mut parts = command.split_whitespace();
-    let output = Command::new(parts.next()?).args(parts).output().ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().into())
+    let program = parts.next().ok_or_else(|| "empty command".to_owned())?;
+    let output = Command::new(program)
+        .args(parts)
+        .output()
+        .map_err(|error| format!("{command}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("{command}: exited with {}", output.status));
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!value.is_empty())
+        .then_some(value)
+        .ok_or_else(|| format!("{command}: returned no output"))
 }
 
-fn uptime() -> Option<String> {
+fn disk() -> FetchResult {
+    command("df -h /")?
+        .lines()
+        .nth(1)
+        .map(str::to_owned)
+        .ok_or_else(|| "df -h /: returned no filesystem row".into())
+}
+
+fn uptime() -> FetchResult {
     if let Ok(info) = fs::read_to_string("/proc/uptime")
         && let Some(seconds) = info
             .split_whitespace()
             .next()
             .and_then(|value| value.parse::<u64>().ok())
     {
-        return Some(format!(
+        return Ok(format!(
             "{}d {}h {}m",
             seconds / 86400,
             seconds / 3600 % 24,
@@ -274,14 +704,15 @@ fn uptime() -> Option<String> {
     command("sysctl -n kern.boottime")
 }
 
-fn cpu() -> Option<String> {
+fn cpu() -> FetchResult {
     if let Ok(info) = fs::read_to_string("/proc/cpuinfo")
         && let Some(cpu) = parse_cpuinfo(&info)
     {
-        return Some(cpu);
+        return Ok(cpu);
     }
     let model = command("sysctl -n machdep.cpu.brand_string")?;
-    Some(format!("{model} ({} cores)", command("sysctl -n hw.ncpu")?))
+    let cores = command("sysctl -n hw.ncpu")?;
+    Ok(format!("{model} ({cores} cores)"))
 }
 
 fn parse_cpuinfo(info: &str) -> Option<String> {
@@ -298,14 +729,29 @@ fn parse_cpuinfo(info: &str) -> Option<String> {
     Some(format!("{model} ({cores} cores)"))
 }
 
-fn memory() -> Option<String> {
-    let info = fs::read_to_string("/proc/meminfo").ok()?;
-    let total = mem_kib(&info, "MemTotal")?;
-    let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
-    Some(format!(
+fn memory() -> FetchResult {
+    if let Ok(info) = fs::read_to_string("/proc/meminfo")
+        && let Some(total) = mem_kib(&info, "MemTotal")
+    {
+        let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
+        return Ok(format!(
+            "{} / {} MiB",
+            total.saturating_sub(available) / 1024,
+            total / 1024
+        ));
+    }
+
+    let total = command("sysctl -n hw.memsize")?
+        .parse::<u64>()
+        .map_err(|error| format!("hw.memsize: {error}"))?;
+    let used = command("vm_stat")
+        .ok()
+        .and_then(|info| parse_vm_stat(&info, total))
+        .unwrap_or(total);
+    Ok(format!(
         "{} / {} MiB",
-        (total - available) / 1024,
-        total / 1024
+        used / 1024 / 1024,
+        total / 1024 / 1024
     ))
 }
 
@@ -320,13 +766,48 @@ fn mem_kib(info: &str, key: &str) -> Option<u64> {
     })
 }
 
+fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
+    let page_size = info
+        .lines()
+        .find_map(|line| line.strip_prefix("Page size of "))
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(4096);
+    let available_pages = ["Pages free", "Pages inactive", "Pages speculative"]
+        .into_iter()
+        .map(|key| {
+            info.lines()
+                .find_map(|line| {
+                    line.strip_prefix(key)?
+                        .split_once(':')?
+                        .1
+                        .trim()
+                        .trim_end_matches('.')
+                        .parse::<u64>()
+                        .ok()
+                })
+                .unwrap_or(0)
+        })
+        .sum::<u64>();
+    Some(total_bytes.saturating_sub(available_pages.saturating_mul(page_size)))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{load_logo, mem_kib, parse_args, parse_cpuinfo, render};
+    use super::{
+        ColorMode, DEFAULT_LOGO, Theme, load_logo, mem_kib, parse_args, parse_config,
+        parse_cpuinfo, parse_vm_stat, render, render_probe, render_with_color,
+    };
 
     #[test]
     fn parses_meminfo_values() {
         assert_eq!(mem_kib("MemTotal: 1024 kB", "MemTotal"), Some(1024));
+    }
+
+    #[test]
+    fn parses_vm_stat_fixture() {
+        let fixture = "Page size of 4096 bytes\nPages free: 10.\nPages inactive: 20.\nPages speculative: 5.\n";
+        assert_eq!(parse_vm_stat(fixture, 200 * 4096), Some(165 * 4096));
     }
 
     #[test]
@@ -339,19 +820,101 @@ mod tests {
     }
 
     #[test]
+    fn missing_proc_fixtures_stay_unavailable() {
+        assert!(parse_cpuinfo("").is_none());
+        assert!(mem_kib("not proc data", "MemTotal").is_none());
+    }
+
+    #[test]
     fn piped_output_never_loads_a_logo() {
         assert!(load_logo(Some("/definitely/not/a/logo"), false).is_none());
     }
 
     #[test]
+    fn logo_modes_select_the_neutral_default() {
+        assert_eq!(load_logo(None, true).as_deref(), Some(DEFAULT_LOGO));
+        assert!(load_logo(Some("none"), true).is_none());
+        assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(DEFAULT_LOGO));
+    }
+
+    #[test]
     fn flags_disable_icons_and_color() {
         let (options, help, version) = parse_args(
-            ["--icons", "off", "--color-no"]
-                .into_iter()
-                .map(str::to_owned),
+            [
+                "--icons",
+                "off",
+                "--color",
+                "never",
+                "--no-terminator",
+                "--no-term",
+                "--verbose",
+            ]
+            .into_iter()
+            .map(str::to_owned),
         )
         .unwrap();
-        assert!(!options.icons && !options.color && !help && !version);
+        assert_eq!(options.color, ColorMode::Never);
+        assert!(!options.icons && options.no_terminator && options.no_term && options.verbose);
+        assert!(!help && !version);
+    }
+
+    #[test]
+    fn color_modes_parse_and_never_disables_output() {
+        let (options, _, _) =
+            parse_args(["--color", "always"].into_iter().map(str::to_owned)).unwrap();
+        assert_eq!(options.color, ColorMode::Always);
+        assert!(!ColorMode::Never.enabled(true));
+        assert!(!ColorMode::Always.enabled(false));
+    }
+
+    #[test]
+    fn parses_config_defaults() {
+        let config = parse_config(
+            "color = never\nicons = off\nlogo = none\nrows = os, user\ntheme = mono\n",
+        )
+        .unwrap();
+
+        assert_eq!(config.color, Some(ColorMode::Never));
+        assert_eq!(config.icons, Some(false));
+        assert_eq!(config.logo.as_deref(), Some("none"));
+        assert_eq!(
+            config.rows.as_deref(),
+            Some(["os".into(), "user".into()].as_slice())
+        );
+        assert_eq!(config.theme, Some(Theme::Mono));
+    }
+
+    #[test]
+    fn probe_output_includes_environment_and_fetch_results() {
+        let rows = vec![("os".into(), "test-os".into())];
+        let output = render_probe(&rows, &["cpu: fixture failure".into()], 80, 24, false);
+
+        assert!(output.contains("minfetch probe"));
+        assert!(output.contains("platform:"));
+        assert!(output.contains("architecture:"));
+        assert!(output.contains("terminal_size: 80x24"));
+        assert!(output.contains("os: test-os"));
+        assert!(output.contains("  cpu: fixture failure"));
+        assert!(!output.contains("\x1b["));
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn json_output_escapes_row_values() {
+        let rows = vec![("user\"name".into(), "line\nvalue".into())];
+        assert_eq!(
+            super::render_json(&rows),
+            "{\"rows\":[{\"label\":\"user\\\"name\",\"value\":\"line\\nvalue\"}]}\n"
+        );
+    }
+
+    #[test]
+    fn color_wraps_labels_without_changing_layout_width() {
+        let rows = vec![("os".into(), "macos".into())];
+        assert_eq!(
+            render_with_color(&rows, None, 40, 4, false, true),
+            "\x1b[36mos \x1b[0m macos\n"
+        );
     }
 
     #[test]
@@ -366,9 +929,21 @@ mod tests {
     }
 
     #[test]
+    fn layout_uses_side_by_side_logo_when_wide() {
+        let rows = vec![("os".into(), "macos".into())];
+        assert_eq!(render(&rows, Some("/\\"), 20, 4, false), "/\\  os macos\n");
+    }
+
+    #[test]
     fn layout_uses_single_column_at_thirty() {
-        let rows = vec![("os".into(), "a-long-value".into())];
-        assert_eq!(render(&rows, None, 30, 4, false), "os\na-long-value\n");
+        let rows = vec![
+            ("os".into(), "macos".into()),
+            ("user".into(), "matheus".into()),
+        ];
+        assert_eq!(
+            render(&rows, None, 30, 4, false),
+            "os\nmacos\nuser\nmatheus\n"
+        );
     }
 
     #[test]
@@ -380,5 +955,23 @@ mod tests {
     #[test]
     fn truncation_respects_wide_glyphs() {
         assert_eq!(super::truncate("猫猫", 3), "猫…");
+    }
+
+    #[test]
+    fn failed_rows_stay_missing_and_collect_diagnostics() {
+        let labels = [
+            "hostname", "user", "shell", "uptime", "cpu", "memory", "disk", "kernel", "terminal",
+            "desktop",
+        ];
+        let mut errors = Vec::new();
+        let rows = labels
+            .iter()
+            .map(|label| super::fetched_row(label, Err("fixture failure".into()), &mut errors))
+            .collect::<Vec<_>>();
+
+        assert!(rows.iter().all(|(_, value)| value == super::MISSING));
+        assert_eq!(errors.len(), labels.len());
+        assert!(errors.iter().all(|error| error.contains("fixture failure")));
+        assert!(super::render(&rows, None, 80, 20, false).contains("hostname  —"));
     }
 }

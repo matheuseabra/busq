@@ -9,6 +9,9 @@ repository = "https://github.com/matheuseabra/minfetch"
 keywords = ["cli", "system-information", "terminal"]
 categories = ["command-line-utilities"]
 
+[features]
+json = []
+
 [profile.release]
 opt-level = "z"
 lto = true
@@ -18,3 +21,6 @@ strip = true
 
 [dependencies]
 unicode-width = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
