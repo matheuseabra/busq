@@ -74,6 +74,10 @@ its row and does not stop the other rows. `--verbose` adds the underlying failur
 
 ## Homebrew
 
-`Formula/minfetch.rb` is a `--HEAD` formula for the private repository. Use it from a private tap
-or an authenticated checkout. A stable public formula remains blocked until the source archive is
-public and tagged.
+`Formula/minfetch.rb` tracks the public `v0.1.0` source archive. Add this repository as a tap and
+install the formula with:
+
+```sh
+brew tap matheuseabra/minfetch https://github.com/matheuseabra/minfetch.git
+brew install matheuseabra/minfetch/minfetch
+```

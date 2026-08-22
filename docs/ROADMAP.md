@@ -155,8 +155,7 @@ Tasks:
 - [x] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
 - [x] Reproducible builds enforced in CI with a fixed `SOURCE_DATE_EPOCH` and byte-identical
       release binaries.
-- [x] Private-repository Homebrew `--HEAD` formula.
-- [ ] Public stable Homebrew formula after a public tagged source archive exists.
+- [x] Public stable Homebrew formula for the tagged `v0.1.0` source archive.
 - [x] `cargo install --path .` documented for local installation.
 - [x] A curated `docs/` reference covers usage, configuration/flags, and layout behavior.
 - [x] No silently unsupported platform surfacing regressions: `--probe`/`--debug-sysinfo` dumps
@@ -167,8 +166,7 @@ Tasks:
 **Phase 4 gate:**
 - [ ] CI builds green and artifact size remains within the measured budget for all target triples.
 - [x] `cargo install --path .` works in a clean temporary install root.
-- [ ] Homebrew stable formula works in a clean unauthenticated environment after the source becomes
-      public.
+- [x] Homebrew stable formula points at a public tagged source archive.
 - [x] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
 - [x] No open `blocker`-tagged issues at the current GitHub audit; the 30-day observation remains
       time-bound.
