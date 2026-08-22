@@ -697,11 +697,14 @@ fn command(command: &str) -> FetchResult {
 }
 
 fn disk() -> FetchResult {
-    command("df -h /")?
-        .lines()
-        .nth(1)
-        .map(str::to_owned)
-        .ok_or_else(|| "df -h /: returned no filesystem row".into())
+    let native = command("df -h /").and_then(|output| {
+        output
+            .lines()
+            .nth(1)
+            .map(str::to_owned)
+            .ok_or_else(|| "df -h /: returned no filesystem row".into())
+    });
+    native.or_else(|error| sysinfo_disk().ok_or(error))
 }
 
 fn uptime() -> FetchResult {
@@ -727,9 +730,12 @@ fn cpu() -> FetchResult {
     {
         return Ok(cpu);
     }
-    let model = command("sysctl -n machdep.cpu.brand_string")?;
-    let cores = command("sysctl -n hw.ncpu")?;
-    Ok(format!("{model} ({cores} cores)"))
+    let native = (|| {
+        let model = command("sysctl -n machdep.cpu.brand_string")?;
+        let cores = command("sysctl -n hw.ncpu")?;
+        Ok(format!("{model} ({cores} cores)"))
+    })();
+    native.or_else(|error| sysinfo_cpu().ok_or(error))
 }
 
 fn temperature() -> FetchResult {
@@ -860,18 +866,75 @@ fn memory() -> FetchResult {
         ));
     }
 
-    let total = command("sysctl -n hw.memsize")?
-        .parse::<u64>()
-        .map_err(|error| format!("hw.memsize: {error}"))?;
-    let used = command("vm_stat")
-        .ok()
-        .and_then(|info| parse_vm_stat(&info, total))
-        .unwrap_or(total);
-    Ok(format!(
-        "{} / {} MiB",
-        used / 1024 / 1024,
-        total / 1024 / 1024
-    ))
+    let native = (|| {
+        let total = command("sysctl -n hw.memsize")?
+            .parse::<u64>()
+            .map_err(|error| format!("hw.memsize: {error}"))?;
+        let used = command("vm_stat")
+            .ok()
+            .and_then(|info| parse_vm_stat(&info, total))
+            .unwrap_or(total);
+        Ok(format!(
+            "{} / {} MiB",
+            used / 1024 / 1024,
+            total / 1024 / 1024
+        ))
+    })();
+    native.or_else(|error| sysinfo_memory().ok_or(error))
+}
+
+#[cfg(feature = "sysinfo")]
+fn sysinfo_cpu() -> Option<String> {
+    let system = sysinfo::System::new_all();
+    let model = system.cpus().first()?.brand();
+    let cores = sysinfo::System::physical_core_count().unwrap_or(system.cpus().len());
+    (!model.is_empty() && cores > 0).then(|| format!("{model} ({cores} cores)"))
+}
+
+#[cfg(not(feature = "sysinfo"))]
+fn sysinfo_cpu() -> Option<String> {
+    None
+}
+
+#[cfg(feature = "sysinfo")]
+fn sysinfo_memory() -> Option<String> {
+    let system = sysinfo::System::new_all();
+    let total = system.total_memory();
+    (total > 0).then(|| {
+        format!(
+            "{} / {} MiB",
+            total.saturating_sub(system.available_memory()) / 1024 / 1024,
+            total / 1024 / 1024
+        )
+    })
+}
+
+#[cfg(not(feature = "sysinfo"))]
+fn sysinfo_memory() -> Option<String> {
+    None
+}
+
+#[cfg(feature = "sysinfo")]
+fn sysinfo_disk() -> Option<String> {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let disk = disks
+        .list()
+        .iter()
+        .find(|disk| disk.mount_point() == Path::new("/"))
+        .or_else(|| disks.list().first())?;
+    let total = disk.total_space();
+    (total > 0).then(|| {
+        format!(
+            "{} / {} GiB",
+            total.saturating_sub(disk.available_space()) / 1024 / 1024 / 1024,
+            total / 1024 / 1024 / 1024
+        )
+    })
+}
+
+#[cfg(not(feature = "sysinfo"))]
+fn sysinfo_disk() -> Option<String> {
+    None
 }
 
 fn mem_kib(info: &str, key: &str) -> Option<u64> {
@@ -980,6 +1043,14 @@ mod tests {
         assert!(linux_temperature(&root).is_err());
         assert!(linux_gpu(&root).is_err());
         std::fs::remove_dir(&root).expect("remove empty fixture directory");
+    }
+
+    #[cfg(feature = "sysinfo")]
+    #[test]
+    fn sysinfo_fallbacks_report_host_values() {
+        assert!(super::sysinfo_cpu().is_some());
+        assert!(super::sysinfo_memory().is_some());
+        assert!(super::sysinfo_disk().is_some());
     }
 
     #[test]

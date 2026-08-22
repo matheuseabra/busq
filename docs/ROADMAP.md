@@ -130,7 +130,7 @@ Tasks:
 - [x] Optional config file for default rows, logo, icons, and theme; flags override it.
 - [x] Small preset theme set around the subtle default (`subtle` and `mono`).
 - [x] Feature-gated JSON emitter, excluded from the default binary.
-- [ ] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
+- [x] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
       the default.
 - [x] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
       platforms. (Full Windows support may move to Phase 4.)

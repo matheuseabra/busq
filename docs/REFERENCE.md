@@ -21,6 +21,13 @@ cargo build --release --features json
 minfetch --json
 ```
 
+For exotic systems where the native collectors are unavailable, build with the
+optional `sysinfo` fallback:
+
+```sh
+cargo build --release --features sysinfo
+```
+
 ## Flags
 
 | Flag | Effect |
