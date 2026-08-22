@@ -164,7 +164,7 @@ Tasks:
       explicitly deferred with a reason before release.
 
 **Phase 4 gate:**
-- [ ] CI builds green and artifact size remains within the measured budget for all target triples.
+- [x] CI builds green and artifact size remains within the measured budget for all target triples.
 - [x] `cargo install --path .` works in a clean temporary install root.
 - [x] Homebrew stable formula points at a public tagged source archive.
 - [x] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
