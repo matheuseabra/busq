@@ -41,3 +41,16 @@ jobs:
 
       - name: Size budget trend
         run: ./scripts/size-gate.sh target/release/minfetch
+
+  windows-build:
+    name: Windows build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --locked --release

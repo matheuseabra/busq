@@ -132,9 +132,9 @@ Tasks:
 - [x] Feature-gated JSON emitter, excluded from the default binary.
 - [ ] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
       the default.
-- [ ] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
+- [x] Windows: `--no-icons`/plain path at minimum; a `--no-color` path that works on all three
       platforms. (Full Windows support may move to Phase 4.)
-- [ ] CI adds a third job for Windows (build-only, tests conditional where possible).
+- [x] CI adds a third job for Windows (build-only, tests conditional where possible).
 - [ ] Fuzz/edge tests: empty `$SHELL`, missing `/proc`, non-UTF8 env, unicode in user/hostname.
 
 **Phase 3 gate:**

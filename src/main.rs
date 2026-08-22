@@ -171,6 +171,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
+            "--no-icons" => options.icons = false,
             "--json" => {
                 #[cfg(feature = "json")]
                 {

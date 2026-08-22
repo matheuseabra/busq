@@ -22,7 +22,7 @@ Useful flags:
 --help                 Show usage
 --version              Show the version
 --config PATH          Load optional defaults from a config file
---icons on|off         Enable or disable row icons
+--icons on|off         Enable or disable row icons (`--no-icons` is an alias)
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)

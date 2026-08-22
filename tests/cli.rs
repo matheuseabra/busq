@@ -36,6 +36,17 @@ fn forced_color_stays_plain_when_stdout_is_piped() {
 }
 
 #[test]
+fn no_icons_alias_removes_row_symbols() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--no-icons")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("• "));
+}
+
+#[test]
 fn no_term_omits_the_uptime_row() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .args(["--no-term"])
