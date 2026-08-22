@@ -48,8 +48,9 @@ using `--json`.
 
 ## Project direction
 
-See [`docs/VISION-REVIEW.md`](docs/VISION-REVIEW.md) for the product direction
-and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the quality-gated plan.
+See [`docs/VISION.md`](docs/VISION.md) for the product direction
+and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the quality-gated plan. See the
+[`user reference`](docs/REFERENCE.md) for flags, configuration, and layout behavior.
 
 ## Contributing
 

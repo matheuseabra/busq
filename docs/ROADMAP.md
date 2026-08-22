@@ -157,7 +157,7 @@ Tasks:
       release binaries.
 - [ ] Homebrew formula (`brew tap` or upstream formula).
 - [x] `cargo install --path .` documented for local installation.
-- [ ] A curated `docs/` set: usage, configuration/flag reference, layout behavior.
+- [x] A curated `docs/` reference covers usage, configuration/flags, and layout behavior.
 - [x] No silently unsupported platform surfacing regressions: `--probe`/`--debug-sysinfo` dumps
       what was detected to help users file good issues.
 - [ ] 30-day "no open launch-blockers" criterion: any bug tagged `blocker` must be fixed or
