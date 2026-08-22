@@ -71,3 +71,9 @@ height limit are omitted.
 
 When stdout is not a TTY, minfetch omits the logo and ANSI escapes. A failed fetch renders `—` in
 its row and does not stop the other rows. `--verbose` adds the underlying failure to stderr.
+
+## Homebrew
+
+`Formula/minfetch.rb` is a `--HEAD` formula for the private repository. Use it from a private tap
+or an authenticated checkout. A stable public formula remains blocked until the source archive is
+public and tagged.

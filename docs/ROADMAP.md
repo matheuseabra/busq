@@ -155,7 +155,8 @@ Tasks:
 - [x] Release binary builds for macOS (arm64 + x86_64), Linux (x86_64 + aarch64) via CI artifacts.
 - [x] Reproducible builds enforced in CI with a fixed `SOURCE_DATE_EPOCH` and byte-identical
       release binaries.
-- [ ] Homebrew formula (`brew tap` or upstream formula).
+- [x] Private-repository Homebrew `--HEAD` formula.
+- [ ] Public stable Homebrew formula after a public tagged source archive exists.
 - [x] `cargo install --path .` documented for local installation.
 - [x] A curated `docs/` reference covers usage, configuration/flags, and layout behavior.
 - [x] No silently unsupported platform surfacing regressions: `--probe`/`--debug-sysinfo` dumps
@@ -165,9 +166,31 @@ Tasks:
 
 **Phase 4 gate:**
 - [ ] CI builds green and artifact size remains within the measured budget for all target triples.
-- [ ] `cargo install minfetch` and the Homebrew formula both work in a clean env.
+- [x] `cargo install --path .` works in a clean temporary install root.
+- [ ] Homebrew stable formula works in a clean unauthenticated environment after the source becomes
+      public.
 - [x] README "usage in a tmux/zsh pane" quickstart verified end-to-end.
-- [ ] No open `blocker`-tagged issues.
+- [x] No open `blocker`-tagged issues at the current GitHub audit; the 30-day observation remains
+      time-bound.
+
+---
+
+## Milestone 5 — Theme detection (v0.5, planned)
+
+**Goal:** choose a small preset theme from terminal hints without changing the plain-output rules
+or turning minfetch into a theme framework.
+
+Tasks:
+- [ ] Detect a terminal light/dark hint when one is available, with a deterministic fallback.
+- [ ] Keep explicit `--theme` and config values ahead of detected defaults.
+- [ ] Map detection only to the existing `subtle` and `mono` presets.
+- [ ] Cover unset, malformed, piped, and `NO_COLOR` detection inputs with tests.
+- [ ] Document detection precedence and the environment hints used.
+
+**M5 gate:**
+- [ ] Detection is deterministic in fixtures and never emits ANSI into a pipe.
+- [ ] Explicit theme selection remains the final authority.
+- [ ] The default binary gains no new runtime dependency.
 
 ---
 
@@ -190,3 +213,4 @@ Tasks:
 | 0.2.0-b | 2B | real terminal dimensions + fresh-data resize behavior |
 | 0.3.0 | 3 | full flags, icons, logo, error-injection suite |
 | 1.0.0 | 4 | multi-target release artifacts, packaging, no blockers |
+| M5 | 5 | deterministic theme detection around the existing presets |

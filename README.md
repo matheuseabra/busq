@@ -17,6 +17,15 @@ cargo test --release
 cargo install --path .
 ```
 
+The repository is private, so Homebrew installation is currently a private-tap/credentialed
+`--HEAD` flow:
+
+```sh
+brew install --HEAD Formula/minfetch.rb
+```
+
+A public stable formula needs a public tagged source archive.
+
 Useful flags:
 
 ```text
