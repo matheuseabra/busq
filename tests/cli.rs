@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{fs, process::Command};
 
 #[test]
 fn piped_output_is_plain_and_has_no_logo() {
@@ -81,4 +81,36 @@ fn verbose_reports_missing_environment_rows_on_stderr() {
             .lines()
             .any(|line| line.contains("shell") && line.ends_with('—'))
     );
+}
+
+#[test]
+fn config_defaults_apply_and_flags_override_them() {
+    let path = std::env::temp_dir().join(format!("minfetch-config-{}", std::process::id()));
+    fs::write(
+        &path,
+        "rows = os, user\nicons = off\nlogo = none\ntheme = mono\n",
+    )
+    .expect("write config");
+
+    let configured = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--config", path.to_str().expect("config path")])
+        .output()
+        .expect("run configured minfetch");
+    let overridden = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args([
+            "--config",
+            path.to_str().expect("config path"),
+            "--icons",
+            "on",
+        ])
+        .output()
+        .expect("run overridden minfetch");
+    fs::remove_file(path).expect("remove config");
+
+    assert!(configured.status.success() && overridden.status.success());
+    let configured_stdout = String::from_utf8_lossy(&configured.stdout);
+    let overridden_stdout = String::from_utf8_lossy(&overridden.stdout);
+    assert!(configured_stdout.contains("os") && configured_stdout.contains("user"));
+    assert!(!configured_stdout.contains("hostname"));
+    assert!(overridden_stdout.contains("• os"));
 }

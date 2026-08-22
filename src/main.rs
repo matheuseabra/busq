@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     env, fs,
     io::{self, IsTerminal},
+    path::PathBuf,
     process::Command,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -26,10 +27,27 @@ enum ColorMode {
     Never,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Theme {
+    Subtle,
+    Mono,
+}
+
+#[derive(Default)]
+struct Config {
+    color: Option<ColorMode>,
+    icons: Option<bool>,
+    logo: Option<String>,
+    rows: Option<Vec<String>>,
+    theme: Option<Theme>,
+}
+
 struct Options {
     color: ColorMode,
     icons: bool,
     logo: Option<String>,
+    rows: Option<Vec<String>>,
+    theme: Theme,
     no_terminator: bool,
     no_term: bool,
     verbose: bool,
@@ -50,14 +68,15 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch [--color auto|always|never] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
             version_string()
         );
         return;
     }
     let stdout_is_terminal = io::stdout().is_terminal();
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
-    let ((width, height), fetched_rows, errors) = fetch_snapshot(options.no_term);
+    let ((width, height), fetched_rows, errors) =
+        fetch_snapshot(options.no_term, options.rows.as_deref());
     if options.verbose {
         for error in errors {
             eprintln!("  ↳ {error}");
@@ -69,7 +88,9 @@ fn main() {
         width,
         height,
         options.icons,
-        options.color.enabled(stdout_is_terminal),
+        options
+            .theme
+            .color_enabled(options.color.enabled(stdout_is_terminal)),
     );
     if options.no_terminator {
         print!("{}", output.strip_suffix('\n').unwrap_or(&output));
@@ -79,14 +100,23 @@ fn main() {
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, bool), String> {
+    let args = args.into_iter().collect::<Vec<_>>();
+    let config_path = args
+        .windows(2)
+        .find(|pair| pair[0] == "--config")
+        .map(|pair| pair[1].as_str());
+    let config = load_config(config_path)?;
+    let no_color = env::var_os("NO_COLOR").is_some();
     let mut options = Options {
-        color: if env::var_os("NO_COLOR").is_some() {
+        color: if no_color {
             ColorMode::Never
         } else {
-            ColorMode::Auto
+            config.color.unwrap_or(ColorMode::Auto)
         },
-        icons: true,
-        logo: None,
+        icons: config.icons.unwrap_or(true),
+        logo: config.logo,
+        rows: config.rows,
+        theme: config.theme.unwrap_or(Theme::Subtle),
         no_terminator: false,
         no_term: false,
         verbose: false,
@@ -108,6 +138,17 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
                     None => return Err("--color needs auto, always, or never".into()),
                 }
             }
+            "--config" => {
+                args.next().ok_or("--config needs a path")?;
+            }
+            "--theme" => {
+                options.theme = match args.next().as_deref() {
+                    Some("subtle") => Theme::Subtle,
+                    Some("mono") => Theme::Mono,
+                    Some(value) => return Err(format!("invalid --theme value {value}")),
+                    None => return Err("--theme needs subtle or mono".into()),
+                }
+            }
             "--no-terminator" => options.no_terminator = true,
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
@@ -127,13 +168,120 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
     Ok((options, help, version))
 }
 
+const ROW_NAMES: &[&str] = &[
+    "hostname",
+    "user",
+    "os",
+    "shell",
+    "uptime",
+    "cpu",
+    "memory",
+    "disk",
+    "kernel",
+    "terminal",
+    "desktop",
+    "temperature",
+    "gpu",
+];
+
+fn load_config(explicit: Option<&str>) -> Result<Config, String> {
+    let path = explicit
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CONFIG_HOME").map(|path| PathBuf::from(path).join("minfetch/config"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/minfetch/config"))
+        });
+    let Some(path) = path else {
+        return Ok(Config::default());
+    };
+    match fs::read_to_string(&path) {
+        Ok(content) => parse_config(&content),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && explicit.is_none() => {
+            Ok(Config::default())
+        }
+        Err(error) => Err(format!("cannot read config {}: {error}", path.display())),
+    }
+}
+
+fn parse_config(content: &str) -> Result<Config, String> {
+    let mut config = Config::default();
+    for (line_number, raw_line) in content.lines().enumerate() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .map(|(key, value)| (key.trim(), value.trim()))
+            .ok_or_else(|| format!("config line {} needs key = value", line_number + 1))?;
+        match key {
+            "color" => config.color = Some(parse_color(value, line_number + 1)?),
+            "icons" => config.icons = Some(parse_on_off(value, "icons", line_number + 1)?),
+            "logo" => config.logo = Some(value.to_owned()),
+            "rows" => config.rows = Some(parse_rows(value, line_number + 1)?),
+            "theme" => {
+                config.theme = Some(match value {
+                    "subtle" => Theme::Subtle,
+                    "mono" => Theme::Mono,
+                    _ => return Err(format!("invalid theme on config line {}", line_number + 1)),
+                });
+            }
+            _ => {
+                return Err(format!(
+                    "unknown config key `{key}` on line {}",
+                    line_number + 1
+                ));
+            }
+        }
+    }
+    Ok(config)
+}
+
+fn parse_color(value: &str, line_number: usize) -> Result<ColorMode, String> {
+    match value {
+        "auto" => Ok(ColorMode::Auto),
+        "always" => Ok(ColorMode::Always),
+        "never" => Ok(ColorMode::Never),
+        _ => Err(format!("invalid color on config line {line_number}")),
+    }
+}
+
+fn parse_on_off(value: &str, key: &str, line_number: usize) -> Result<bool, String> {
+    match value {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(format!("invalid {key} on config line {line_number}")),
+    }
+}
+
+fn parse_rows(value: &str, line_number: usize) -> Result<Vec<String>, String> {
+    let rows = value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if rows.is_empty() || rows.iter().any(|row| !ROW_NAMES.contains(&row.as_str())) {
+        return Err(format!("invalid rows on config line {line_number}"));
+    }
+    Ok(rows)
+}
+
 impl ColorMode {
     fn enabled(self, stdout_is_terminal: bool) -> bool {
         stdout_is_terminal && self != Self::Never
     }
 }
 
-fn rows(no_term: bool) -> (Vec<(String, String)>, Vec<String>) {
+impl Theme {
+    fn color_enabled(self, color_enabled: bool) -> bool {
+        color_enabled && self != Self::Mono
+    }
+}
+
+fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, Vec<String>) {
     let mut errors = Vec::new();
     let mut rows = vec![
         fetched_row("hostname", hostname(), &mut errors),
@@ -161,6 +309,9 @@ fn rows(no_term: bool) -> (Vec<(String, String)>, Vec<String>) {
     if no_term {
         rows.retain(|(label, _)| label != "uptime");
     }
+    if let Some(selected) = selected {
+        rows.retain(|(label, _)| selected.iter().any(|value| value == label));
+    }
     (rows, errors)
 }
 
@@ -185,13 +336,13 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
     }
 }
 
-fn fetch_snapshot(no_term: bool) -> Snapshot {
+fn fetch_snapshot(no_term: bool, selected: Option<&[String]>) -> Snapshot {
     #[cfg(unix)]
     let previous_handler = install_resize_handler();
     let initial_size = terminal_size();
-    let fetched_rows = rows(no_term);
+    let fetched_rows = rows(no_term, selected);
     let snapshot = if resize_seen() {
-        (terminal_size(), rows(no_term))
+        (terminal_size(), rows(no_term, selected))
     } else {
         (initial_size, fetched_rows)
     };
@@ -542,8 +693,8 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, load_logo, mem_kib, parse_args, parse_cpuinfo, parse_vm_stat,
-        render, render_with_color,
+        ColorMode, DEFAULT_LOGO, Theme, load_logo, mem_kib, parse_args, parse_config,
+        parse_cpuinfo, parse_vm_stat, render, render_with_color,
     };
 
     #[test]
@@ -606,6 +757,23 @@ mod tests {
         assert_eq!(options.color, ColorMode::Always);
         assert!(!ColorMode::Never.enabled(true));
         assert!(!ColorMode::Always.enabled(false));
+    }
+
+    #[test]
+    fn parses_config_defaults() {
+        let config = parse_config(
+            "color = never\nicons = off\nlogo = none\nrows = os, user\ntheme = mono\n",
+        )
+        .unwrap();
+
+        assert_eq!(config.color, Some(ColorMode::Never));
+        assert_eq!(config.icons, Some(false));
+        assert_eq!(config.logo.as_deref(), Some("none"));
+        assert_eq!(
+            config.rows.as_deref(),
+            Some(["os".into(), "user".into()].as_slice())
+        );
+        assert_eq!(config.theme, Some(Theme::Mono));
     }
 
     #[test]

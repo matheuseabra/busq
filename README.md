@@ -21,10 +21,12 @@ Useful flags:
 ```text
 --help                 Show usage
 --version              Show the version
+--config PATH          Load optional defaults from a config file
 --icons on|off         Enable or disable row icons
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
+--theme subtle|mono    Select the default color theme
 --no-term              Omit the uptime row
 --no-terminator        Omit the final newline
 --verbose              Print fetch failures to stderr
@@ -32,6 +34,11 @@ Useful flags:
 ```
 
 Piped output is plain text and never includes ANSI escapes or the logo.
+
+An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
+`$HOME/.config/minfetch/config`) accepts `color`, `icons`, `logo`, `rows`, and
+`theme` keys as `key = value`; command-line flags override its defaults. Use
+`--config PATH` to select another file.
 
 ## Project direction
 

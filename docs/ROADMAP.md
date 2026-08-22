@@ -127,8 +127,8 @@ Tasks:
 - [x] `--no-term` omits uptime when not wanted.
 - [x] Fetch errors are structured: a single failure never aborts the whole run; `--verbose` prints
       the underlying error line in a tooltip style on stderr.
-- [ ] Optional config file for default rows, logo, icons, and theme; flags override it.
-- [ ] Small preset theme set around the subtle default.
+- [x] Optional config file for default rows, logo, icons, and theme; flags override it.
+- [x] Small preset theme set around the subtle default (`subtle` and `mono`).
 - [ ] Feature-gated JSON emitter, excluded from the default binary.
 - [ ] Optional feature-gated sysinfo-backed fetcher for exotic systems; hand-rolled parsing remains
       the default.
