@@ -10,7 +10,7 @@ the shortest useful summary of a machine that still fits in a small pane.
 
 The project is early-stage. macOS and Linux are the primary targets; the
 current implementation is a single-shot readout with plain-text output,
-optional icons, and width-aware rendering.
+opt-in icons and logo, and width-aware rendering.
 
 ## Build and run
 
@@ -35,7 +35,7 @@ Useful flags:
 --help                 Show usage
 --version              Show the version
 --config PATH          Load optional defaults from a config file
---icons on|off|nerd    Select portable Unicode, no icons, or Nerd Font icons (default)
+--icons on|off|nerd    Select portable Unicode, no icons (default), or Nerd Font icons
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
@@ -50,6 +50,8 @@ Useful flags:
 ```
 
 Piped output is plain text and never includes ANSI escapes or the logo.
+Icons and the built-in OS ASCII logo are also off by default; enable either with
+`--icons on|nerd` and `--logo`.
 
 An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
 `$HOME/.config/minfetch/config`) accepts `color`, `icons`, `logo`, `rows`, and

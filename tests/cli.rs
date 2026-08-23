@@ -63,14 +63,26 @@ fn no_icons_alias_removes_row_symbols() {
 }
 
 #[test]
-fn nerd_icons_are_the_default() {
-    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+fn icons_are_opt_in() {
+    let plain = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .output()
         .expect("run minfetch");
+    let nerd = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--icons", "nerd"])
+        .output()
+        .expect("run minfetch with Nerd Font icons");
+    let unicode = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .args(["--icons", "on"])
+        .output()
+        .expect("run minfetch with Unicode icons");
 
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{f17c} OS:") && !stdout.contains("◉ OS:"));
+    assert!(plain.status.success() && nerd.status.success() && unicode.status.success());
+    let stdout = String::from_utf8_lossy(&plain.stdout);
+    assert!(
+        stdout.contains("OS:") && !stdout.contains("\u{f17c} OS:") && !stdout.contains("◉ OS:")
+    );
+    assert!(String::from_utf8_lossy(&nerd.stdout).contains("\u{f17c} OS:"));
+    assert!(String::from_utf8_lossy(&unicode.stdout).contains("◉ OS:"));
 }
 
 #[test]
