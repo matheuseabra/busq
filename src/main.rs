@@ -395,7 +395,11 @@ fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, V
         fetched_row("kernel", command("uname -sr"), &mut errors),
         fetched_row("uptime", uptime(), &mut errors),
         fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
-        fetched_row("terminal", environment_value(&["TERM"]), &mut errors),
+        fetched_row(
+            "terminal",
+            environment_value(&["TERM_PROGRAM", "TERM"]),
+            &mut errors,
+        ),
         fetched_row("cpu", cpu(), &mut errors),
         fetched_row("gpu", gpu(), &mut errors),
         fetched_row("memory", memory(), &mut errors),

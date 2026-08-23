@@ -237,6 +237,7 @@ fn unicode_identity_values_render_without_loss() {
 fn verbose_reports_missing_environment_rows_on_stderr() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .env_remove("SHELL")
+        .env_remove("TERM_PROGRAM")
         .env_remove("TERM")
         .env_remove("USER")
         .env_remove("USERNAME")
@@ -252,6 +253,22 @@ fn verbose_reports_missing_environment_rows_on_stderr() {
         String::from_utf8_lossy(&output.stdout)
             .lines()
             .any(|line| line.contains("Shell:") && line.ends_with('—'))
+    );
+}
+
+#[test]
+fn terminal_prefers_emulator_name() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .env("TERM_PROGRAM", "ghostty")
+        .env("TERM", "xterm-256color")
+        .output()
+        .expect("run minfetch");
+
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains("Terminal:") && line.ends_with("ghostty"))
     );
 }
 

@@ -4,6 +4,12 @@ All notable changes to minfetch are documented here.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-23
+
+### Fixed
+
+- Prefer the terminal emulator name from `TERM_PROGRAM` (including Ghostty), with `TERM` as a fallback.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added
