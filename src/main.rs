@@ -13,6 +13,9 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MISSING: &str = "—";
 const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
+const MACOS_LOGO: &str = "      .:'\n   __ :__\n  (______)\n   \\____/";
+const LINUX_LOGO: &str =
+    "   .--.\n  |o_o |\n  |:_/ |\n //   \\ \\\n(|     | )\n/'\\_   _/`\\\n\\___)=(___/";
 const ANSI_LABEL: &str = "\x1b[36m";
 const ANSI_RESET: &str = "\x1b[0m";
 type FetchResult = Result<String, String>;
@@ -79,7 +82,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo [none|auto|PATH]]",
             version_string(),
             if cfg!(feature = "json") {
                 " [--json]"
@@ -162,7 +165,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
     };
     let mut help = false;
     let mut version = false;
-    let mut args = args.into_iter();
+    let mut args = args.into_iter().peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" | "-h" => help = true,
@@ -210,7 +213,14 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
                     None => return Err("--icons needs on, off, or nerd".into()),
                 }
             }
-            "--logo" => options.logo = Some(args.next().ok_or("--logo needs a path")?),
+            "--logo" => {
+                options.logo = Some(match args.peek() {
+                    Some(value) if !value.starts_with('-') => {
+                        args.next().expect("peeked argument exists")
+                    }
+                    _ => "auto".into(),
+                })
+            }
             value if value.starts_with('-') => return Err(format!("unknown option {value}")),
             value => return Err(format!("unexpected argument {value}")),
         }
@@ -403,9 +413,17 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
     }
     match path {
         Some("none") => None,
-        Some("auto") => Some(DEFAULT_LOGO.into()),
+        Some("auto") => Some(os_logo().into()),
         None => None,
         Some(path) => fs::read_to_string(path).ok(),
+    }
+}
+
+fn os_logo() -> &'static str {
+    match env::consts::OS {
+        "macos" => MACOS_LOGO,
+        "linux" => LINUX_LOGO,
+        _ => DEFAULT_LOGO,
     }
 }
 
@@ -1104,8 +1122,8 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, IconMode, Theme, detect_theme, format_uptime, format_usage,
-        linux_gpu, linux_temperature, load_logo, mem_kib, parse_args, parse_boottime,
+        ColorMode, IconMode, Theme, detect_theme, format_uptime, format_usage, linux_gpu,
+        linux_temperature, load_logo, mem_kib, os_logo, parse_args, parse_boottime,
         parse_colorfgbg, parse_config, parse_cpuinfo, parse_drm_uevent, parse_ioreg_temperature,
         parse_millidegrees, parse_system_profiler_gpu, parse_vm_stat, render, render_probe,
         render_with_color,
@@ -1207,10 +1225,18 @@ mod tests {
     }
 
     #[test]
-    fn logo_modes_require_explicit_opt_in() {
+    fn logo_modes_select_the_os_logo() {
         assert!(load_logo(None, true).is_none());
         assert!(load_logo(Some("none"), true).is_none());
-        assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(DEFAULT_LOGO));
+        assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(os_logo()));
+    }
+
+    #[test]
+    fn logo_flag_selects_auto_without_consuming_the_next_flag() {
+        let (options, _, _) =
+            parse_args(["--logo", "--icons", "off"].into_iter().map(str::to_owned)).unwrap();
+        assert_eq!(options.logo.as_deref(), Some("auto"));
+        assert_eq!(options.icons, IconMode::Off);
     }
 
     #[test]
