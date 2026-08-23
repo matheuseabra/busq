@@ -84,7 +84,8 @@ minfetch takes one snapshot and exits. It does not start a watch loop.
 
 See [`docs/VISION.md`](docs/VISION.md) for the product direction
 and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the quality-gated plan. See the
-[`user reference`](docs/REFERENCE.md) for flags, configuration, and layout behavior.
+[`user reference`](docs/REFERENCE.md) for flags, configuration, and layout behavior, and
+[`CHANGELOG.md`](CHANGELOG.md) / [`release guide`](docs/RELEASING.md) for releases.
 
 ## Contributing
 
