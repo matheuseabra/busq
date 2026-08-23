@@ -832,11 +832,7 @@ fn format_uptime(seconds: u64) -> String {
 
 fn format_usage(used: u64, total: u64) -> String {
     let gib = 1024_f64.powi(3);
-    let percent = if total == 0 {
-        0
-    } else {
-        used.saturating_mul(100) / total
-    };
+    let percent = used.saturating_mul(100).checked_div(total).unwrap_or(0);
     format!(
         "{:.2} GiB / {:.2} GiB ({percent}%)",
         used as f64 / gib,
@@ -1102,6 +1098,7 @@ mod tests {
             format_usage(8 * 1024_u64.pow(3), 16 * 1024_u64.pow(3)),
             "8.00 GiB / 16.00 GiB (50%)"
         );
+        assert_eq!(format_usage(0, 0), "0.00 GiB / 0.00 GiB (0%)");
     }
 
     #[test]
