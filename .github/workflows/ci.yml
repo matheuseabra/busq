@@ -42,6 +42,23 @@ jobs:
       - name: Size budget trend
         run: ./scripts/size-gate.sh target/release/minfetch
 
+  coverage:
+    name: coverage (90% lines)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Enforce line coverage
+        run: cargo llvm-cov --locked --all-targets --all-features --fail-under-lines 90 --summary-only
+
   windows-build:
     name: Windows build
     runs-on: windows-latest
