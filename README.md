@@ -1,7 +1,12 @@
 # minfetch
 
+[![CI](https://github.com/matheuseabra/minfetch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matheuseabra/minfetch/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/matheuseabra/minfetch?display_name=tag&sort=semver)](https://github.com/matheuseabra/minfetch/releases/latest)
+
 `minfetch` is a tiny, pane-aware system-info readout for terminals. It prints
 the shortest useful summary of a machine that still fits in a small pane.
+
+![minfetch terminal demo](docs/minfetch.gif)
 
 The project is early-stage. macOS and Linux are the primary targets; the
 current implementation is a single-shot readout with plain-text output,
@@ -30,7 +35,7 @@ Useful flags:
 --help                 Show usage
 --version              Show the version
 --config PATH          Load optional defaults from a config file
---icons on|off         Enable or disable row icons (`--no-icons` is an alias)
+--icons on|off|nerd    Select portable Unicode, no icons, or Nerd Font icons (default)
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)

@@ -35,7 +35,7 @@ cargo build --release --features sysinfo
 | `--help` | Print usage. |
 | `--version` | Print the package version. |
 | `--config PATH` | Read defaults from a specific config file. |
-| `--icons on\|off` | Enable or disable row icons. `--no-icons` is an alias for off. |
+| `--icons on\|off\|nerd` | Select portable Unicode, no icons, or Nerd Font icons (the default). `--no-icons` is an alias for off. |
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
 | `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
@@ -60,7 +60,7 @@ comment. Supported keys are `color`, `icons`, `logo`, `rows`, and `theme`.
 
 ```text
 color = auto
-icons = on
+icons = nerd
 logo = none
 rows = hostname, user, os, shell, cpu, memory
 theme = subtle
@@ -68,6 +68,8 @@ theme = subtle
 
 Command-line flags override config defaults. Unknown keys and invalid row names fail with a
 line-numbered error.
+
+Nerd Font icons are the default. Use `icons = on` or `--icons on` for portable Unicode symbols.
 
 ### Theme detection
 
