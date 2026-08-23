@@ -4,6 +4,17 @@ All notable changes to minfetch are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-23
+
+### Added
+
+- `--interactive` / `-i` refreshes the readout every second and exits on `q`.
+
+### Changed
+
+- Icons and the built-in OS logo are opt-in; the default readout is plain.
+- Labels use a dimmer terminal style than values when ANSI output is enabled.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
