@@ -1,8 +1,8 @@
 class Minfetch < Formula
   desc "Tiny, pane-aware system-info readout for terminals"
   homepage "https://github.com/matheuseabra/minfetch"
-  url "https://github.com/matheuseabra/minfetch/archive/refs/tags/v0.3.0.tar.gz"
-  sha256 "ef6e964a9ec580c8c76f93898653840137ea061244369ed961272fcac91139f9"
+  url "https://github.com/matheuseabra/minfetch/archive/refs/tags/v0.4.0.tar.gz"
+  sha256 "07aa3de5d8c25a23b566c41ee22a0760a7a5104c49a0100ebb9ccf064e439e0f"
   license "MIT"
 
   depends_on "rust" => :build
