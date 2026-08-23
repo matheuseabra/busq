@@ -63,14 +63,16 @@ fn no_icons_alias_removes_row_symbols() {
 }
 
 #[test]
-fn nerd_icons_are_the_default() {
+fn icons_are_opt_in() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .output()
         .expect("run minfetch");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\u{f17c} OS:") && !stdout.contains("◉ OS:"));
+    assert!(
+        stdout.contains("OS:") && !stdout.contains("\u{f17c} OS:") && !stdout.contains("◉ OS:")
+    );
 }
 
 #[test]

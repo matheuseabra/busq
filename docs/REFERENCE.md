@@ -35,7 +35,7 @@ cargo build --release --features sysinfo
 | `--help` | Print usage. |
 | `--version` | Print the package version. |
 | `--config PATH` | Read defaults from a specific config file. |
-| `--icons on\|off\|nerd` | Select portable Unicode, no icons, or Nerd Font icons (the default). `--no-icons` is an alias for off. |
+| `--icons on\|off\|nerd` | Select portable Unicode, no icons (the default), or Nerd Font icons. `--no-icons` is an alias for off. |
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
 | `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
@@ -69,7 +69,8 @@ theme = subtle
 Command-line flags override config defaults. Unknown keys and invalid row names fail with a
 line-numbered error.
 
-Nerd Font icons are the default. Use `icons = on` or `--icons on` for portable Unicode symbols.
+Icons and logos are opt-in. Use `icons = on` for portable Unicode, `icons = nerd` for Nerd Font
+icons, and `logo = auto` (or bare `--logo`) for the built-in OS logo.
 
 ### Theme detection
 

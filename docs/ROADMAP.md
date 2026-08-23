@@ -42,7 +42,7 @@ side-by-side layout lands in phase 2.
 
 Tasks:
 - [x] CLI: `--color-no`, `--version`, `--help`, and `--icons on|off` to control the Unicode glyph
-      labels (icons **on by default** — review verdict).
+      labels (icons are opt-in).
 - [x] Fetch hostname, user, OS, and shell.
 - [x] Fetch CPU model + core count, Linux `/proc` or macOS `sysctl`/`vm_stat` memory, root disk,
       uptime, and context rows.

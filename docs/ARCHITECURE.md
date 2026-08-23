@@ -129,9 +129,8 @@ The heart of responsiveness is a simple `<Cell>` grid:
     own lines), dropping icons.
 - Long paths/values are **truncated with an ellipsis** rather than wrapped, so a row never exceeds
   the pane width.
-- **Icons (unicode glyphs) are on by default** (`--icons off` to disable) — confirmed in the
-  /grill-me pass. This makes `unicode-width` correct handling **core**, not optional: invalid-width
-  icons would break the whole column alignment.
+- **Icons are opt-in** (`--icons on` or `--icons nerd`); plain labels are the default. When enabled,
+  `unicode-width` keeps the column alignment correct.
 
 ## Terminal responsiveness
 

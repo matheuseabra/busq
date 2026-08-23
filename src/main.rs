@@ -152,7 +152,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         } else {
             config.color.unwrap_or(ColorMode::Auto)
         },
-        icons: config.icons.unwrap_or(IconMode::Nerd),
+        icons: config.icons.unwrap_or(IconMode::Off),
         logo: config.logo,
         rows: config.rows,
         theme: config.theme,
@@ -1298,6 +1298,13 @@ mod tests {
         assert_eq!(options.icons, IconMode::Off);
         assert!(options.no_terminator && options.no_term && options.verbose);
         assert!(!help && !version);
+    }
+
+    #[test]
+    fn defaults_hide_icons_and_logo() {
+        let (options, _, _) = parse_args(std::iter::empty()).expect("parse default options");
+        assert_eq!(options.icons, IconMode::Off);
+        assert!(options.logo.is_none());
     }
 
     #[test]

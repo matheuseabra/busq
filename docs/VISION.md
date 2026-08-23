@@ -14,8 +14,8 @@ Hand-rolled `/proc` and `sysctl` parsing is the default. A feature-gated
 sysinfo-backed path may cover exotic systems. Dependencies and features stay
 within a measured, bendable size budget reported by CI.
 
-Nerd Font icons are on by default, the logo is opt-in, and a small set of themes sits
-around the subtle default. Resize re-fetches and re-lays out fresh data. A
+Icons and the logo are opt-in, and a small set of themes sits around the subtle default. Resize
+re-fetches and re-lays out fresh data. A
 failed fetcher renders `—` without aborting other rows. Piped output has no
 ANSI or logo; `NO_COLOR` and explicit color flags win.
 
@@ -30,7 +30,7 @@ stretch goal.
 |----|----------|---------|
 | H-1 | Feature-gated `--json` | In vision |
 | H-2 | Re-fetch on resize | In vision |
-| H-3 | Icons off by default | Off mission |
+| H-3 | Icons off by default | In vision |
 | H-4 | OS-matched logos | Off mission |
 | H-5 | Windows first-class in v1 | Off mission |
 | H-6 | Feature-gated sysinfo fallback | In vision |
