@@ -1122,11 +1122,11 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, IconMode, Theme, detect_theme, format_uptime, format_usage, linux_gpu,
-        linux_temperature, load_logo, mem_kib, os_logo, parse_args, parse_boottime,
-        parse_colorfgbg, parse_config, parse_cpuinfo, parse_drm_uevent, parse_ioreg_temperature,
-        parse_millidegrees, parse_system_profiler_gpu, parse_vm_stat, render, render_probe,
-        render_with_color,
+        ColorMode, IconMode, Theme, detect_theme, format_uptime, format_usage, label_text,
+        linux_gpu, linux_temperature, load_config, load_logo, mem_kib, os_logo, parse_args,
+        parse_boottime, parse_color, parse_colorfgbg, parse_config, parse_cpuinfo,
+        parse_drm_uevent, parse_icons, parse_ioreg_temperature, parse_millidegrees, parse_rows,
+        parse_system_profiler_gpu, parse_vm_stat, render, render_probe, render_with_color,
     };
 
     #[test]
@@ -1136,6 +1136,8 @@ mod tests {
 
     #[test]
     fn formats_compact_fastfetch_style_stats() {
+        assert_eq!(format_uptime(3), "0m");
+        assert_eq!(format_uptime(3_660), "1h 1m");
         assert_eq!(format_uptime(93_784), "1d 2h 3m");
         assert_eq!(
             parse_boottime("{ sec = 1787264167, usec = 728186 }"),
@@ -1217,6 +1219,14 @@ mod tests {
     fn missing_proc_fixtures_stay_unavailable() {
         assert!(parse_cpuinfo("").is_none());
         assert!(mem_kib("not proc data", "MemTotal").is_none());
+        assert!(parse_millidegrees("-273151").is_none());
+        assert!(parse_millidegrees("invalid").is_none());
+        assert!(parse_ioreg_temperature("temperature = nope").is_none());
+        assert!(parse_system_profiler_gpu("no chipset here").is_none());
+        assert_eq!(
+            parse_drm_uevent("DRIVER=amdgpu\n").as_deref(),
+            Some("amdgpu")
+        );
     }
 
     #[test]
@@ -1229,6 +1239,17 @@ mod tests {
         assert!(load_logo(None, true).is_none());
         assert!(load_logo(Some("none"), true).is_none());
         assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(os_logo()));
+    }
+
+    #[test]
+    fn custom_logo_files_and_invalid_config_paths_report_their_result() {
+        let path = std::env::temp_dir().join(format!("minfetch-logo-{}", std::process::id()));
+        std::fs::write(&path, "logo").expect("write logo");
+        assert_eq!(load_logo(path.to_str(), true).as_deref(), Some("logo"));
+        std::fs::remove_file(&path).expect("remove logo");
+
+        let directory = std::env::temp_dir();
+        assert!(load_config(Some(directory.to_str().expect("temp directory"))).is_err());
     }
 
     #[test]
@@ -1268,6 +1289,30 @@ mod tests {
         assert_eq!(options.color, ColorMode::Always);
         assert!(!ColorMode::Never.enabled(true));
         assert!(!ColorMode::Always.enabled(false));
+    }
+
+    #[test]
+    fn invalid_config_values_and_flags_are_rejected() {
+        assert!(parse_color("bright", 2).is_err());
+        assert!(parse_icons("emoji", 2).is_err());
+        assert!(parse_rows("", 2).is_err());
+        assert!(parse_rows("os, unknown", 2).is_err());
+        for arguments in [
+            vec!["--color", "bright"],
+            vec!["--color"],
+            vec!["--theme", "bright"],
+            vec!["--theme"],
+            vec!["--icons", "emoji"],
+            vec!["--icons"],
+            vec!["--config"],
+            vec!["--unknown"],
+            vec!["value"],
+        ] {
+            assert!(parse_args(arguments.into_iter().map(str::to_owned)).is_err());
+        }
+        for content in ["broken", "theme = bright", "unknown = value"] {
+            assert!(parse_config(content).is_err());
+        }
     }
 
     #[test]
@@ -1407,7 +1452,16 @@ mod tests {
 
     #[test]
     fn truncation_respects_wide_glyphs() {
+        assert_eq!(super::truncate("hello", 0), "");
+        assert_eq!(super::truncate("hello", 1), "…");
         assert_eq!(super::truncate("猫猫", 3), "猫…");
+    }
+
+    #[test]
+    fn icon_modes_keep_labels_readable() {
+        assert_eq!(label_text("cpu", IconMode::Off), "CPU:");
+        assert!(label_text("cpu", IconMode::Unicode).starts_with('◈'));
+        assert!(label_text("cpu", IconMode::Nerd).contains("CPU:"));
     }
 
     #[test]
