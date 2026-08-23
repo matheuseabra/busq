@@ -1207,6 +1207,24 @@ mod tests {
         std::fs::remove_dir(&root).expect("remove empty fixture directory");
     }
 
+    #[test]
+    fn parses_linux_hardware_directories() {
+        let root =
+            std::env::temp_dir().join(format!("minfetch-hardware-fixture-{}", std::process::id()));
+        let thermal = root.join("thermal_zone0");
+        let card = root.join("card0/device");
+        std::fs::create_dir_all(&thermal).expect("create thermal fixture");
+        std::fs::create_dir_all(&card).expect("create DRM fixture");
+        std::fs::write(thermal.join("temp"), "62000\n").expect("write temperature");
+        std::fs::write(thermal.join("type"), "x86_pkg_temp\n").expect("write sensor type");
+        std::fs::write(card.join("uevent"), "DRIVER=amdgpu\nPCI_ID=1002:73bf\n")
+            .expect("write DRM uevent");
+
+        assert_eq!(linux_temperature(&root).as_deref(), Ok("62 °C"));
+        assert_eq!(linux_gpu(&root).as_deref(), Ok("amdgpu (1002:73bf)"));
+        std::fs::remove_dir_all(root).expect("remove fixture directory");
+    }
+
     #[cfg(feature = "sysinfo")]
     #[test]
     fn sysinfo_fallbacks_report_host_values() {
