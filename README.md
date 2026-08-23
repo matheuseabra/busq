@@ -40,6 +40,7 @@ Useful flags:
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)
 --theme subtle|mono    Select the color theme (otherwise detect a terminal hint)
+--interactive, -i      Refresh every second; press q to quit (TTY only)
 --probe                Dump platform, terminal, row, and error detection
 --json                 Emit rows as JSON (feature build only)
 --no-term              Omit the uptime row
@@ -80,7 +81,8 @@ For a compact plain-text pane, use:
 minfetch --no-term --no-icons --color never
 ```
 
-minfetch takes one snapshot and exits. It does not start a watch loop.
+`minfetch` takes one snapshot and exits by default. `minfetch --interactive` refreshes the same
+readout every second; press `q` to quit.
 
 ## Project direction
 
