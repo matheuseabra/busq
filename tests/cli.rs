@@ -63,9 +63,8 @@ fn no_icons_alias_removes_row_symbols() {
 }
 
 #[test]
-fn nerd_icons_are_opt_in() {
+fn nerd_icons_are_the_default() {
     let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
-        .args(["--icons", "nerd"])
         .output()
         .expect("run minfetch");
 

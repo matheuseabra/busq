@@ -149,7 +149,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         } else {
             config.color.unwrap_or(ColorMode::Auto)
         },
-        icons: config.icons.unwrap_or(IconMode::Unicode),
+        icons: config.icons.unwrap_or(IconMode::Nerd),
         logo: config.logo,
         rows: config.rows,
         theme: config.theme,

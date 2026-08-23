@@ -30,7 +30,7 @@ Useful flags:
 --help                 Show usage
 --version              Show the version
 --config PATH          Load optional defaults from a config file
---icons on|off|nerd    Select portable Unicode, no icons, or Nerd Font icons
+--icons on|off|nerd    Select portable Unicode, no icons, or Nerd Font icons (default)
 --color-no             Disable color output
 --color auto|always|never
                        Select color behavior (never emits ANSI when piped)

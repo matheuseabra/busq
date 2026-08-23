@@ -14,7 +14,7 @@ Hand-rolled `/proc` and `sysctl` parsing is the default. A feature-gated
 sysinfo-backed path may cover exotic systems. Dependencies and features stay
 within a measured, bendable size budget reported by CI.
 
-Icons are on by default, the logo is opt-in, and a small set of themes sits
+Nerd Font icons are on by default, the logo is opt-in, and a small set of themes sits
 around the subtle default. Resize re-fetches and re-lays out fresh data. A
 failed fetcher renders `—` without aborting other rows. Piped output has no
 ANSI or logo; `NO_COLOR` and explicit color flags win.
