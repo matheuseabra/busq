@@ -45,7 +45,8 @@ Useful flags:
 --no-term              Omit the uptime row
 --no-terminator        Omit the final newline
 --verbose              Print fetch failures to stderr
---logo none|auto|PATH  Select the neutral logo, disable it, or load a file
+--logo [none|auto|PATH]
+                       Show the built-in OS logo, disable it, or load a file
 ```
 
 Piped output is plain text and never includes ANSI escapes or the logo.

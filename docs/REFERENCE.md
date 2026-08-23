@@ -39,7 +39,7 @@ cargo build --release --features sysinfo
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
 | `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
-| `--logo none\|auto\|PATH` | Disable the logo, use the neutral logo, or load a file. |
+| `--logo [none\|auto\|PATH]` | Show the built-in OS logo; use `none` to disable it, `auto` explicitly, or load a file. |
 | `--no-term` | Omit the uptime row. |
 | `--no-terminator` | Omit the final newline. |
 | `--verbose` | Print fetch failures to stderr. |
