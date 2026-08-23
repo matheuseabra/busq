@@ -1,13 +1,20 @@
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
-#[cfg(unix)]
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     env, fs,
-    io::{self, IsTerminal},
+    io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
+};
+#[cfg(unix)]
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::Duration,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -16,8 +23,11 @@ const DEFAULT_LOGO: &str = "╭─╮\n│·│\n╰─╯";
 const MACOS_LOGO: &str = "      .:'\n   __ :__\n  (______)\n   \\____/";
 const LINUX_LOGO: &str =
     "   .--.\n  |o_o |\n  |:_/ |\n //   \\ \\\n(|     | )\n/'\\_   _/`\\\n\\___)=(___/";
-const ANSI_LABEL: &str = "\x1b[36m";
+const ANSI_LABEL_SUBTLE: &str = "\x1b[2;36m";
+const ANSI_LABEL_MONO: &str = "\x1b[2m";
 const ANSI_RESET: &str = "\x1b[0m";
+#[cfg(unix)]
+const INTERACTIVE_INTERVAL: Duration = Duration::from_secs(1);
 type FetchResult = Result<String, String>;
 type Snapshot = ((usize, usize), Vec<(String, String)>, Vec<String>);
 
@@ -63,6 +73,7 @@ struct Options {
     no_term: bool,
     verbose: bool,
     probe: bool,
+    interactive: bool,
     #[cfg(feature = "json")]
     json: bool,
 }
@@ -82,7 +93,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo [none|auto|PATH]]",
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--interactive] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo [none|auto|PATH]]",
             version_string(),
             if cfg!(feature = "json") {
                 " [--json]"
@@ -96,16 +107,28 @@ fn main() {
     let theme = options
         .theme
         .unwrap_or_else(|| detect_theme(stdout_is_terminal, env::var("COLORFGBG").ok().as_deref()));
+    if options.interactive {
+        if !stdout_is_terminal || !io::stdin().is_terminal() {
+            eprintln!("minfetch: --interactive requires a terminal");
+            std::process::exit(2);
+        }
+        if let Err(error) = run_interactive(&options, theme, stdout_is_terminal) {
+            eprintln!("minfetch: {error}");
+            std::process::exit(2);
+        }
+        return;
+    }
+    print!("{}", output(&options, theme, stdout_is_terminal));
+}
+
+fn output(options: &Options, theme: Theme, stdout_is_terminal: bool) -> String {
     let ((width, height), fetched_rows, errors) =
         fetch_snapshot(options.no_term, options.rows.as_deref());
     if options.probe {
-        let output = render_probe(&fetched_rows, &errors, width, height, stdout_is_terminal);
-        if options.no_terminator {
-            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
-        } else {
-            print!("{output}");
-        }
-        return;
+        return terminate(
+            render_probe(&fetched_rows, &errors, width, height, stdout_is_terminal),
+            options,
+        );
     }
     if options.verbose {
         for error in errors {
@@ -115,26 +138,27 @@ fn main() {
     let logo = load_logo(options.logo.as_deref(), stdout_is_terminal);
     #[cfg(feature = "json")]
     if options.json {
-        let output = render_json(&fetched_rows);
-        if options.no_terminator {
-            print!("{}", output.strip_suffix('\n').unwrap_or(&output));
-        } else {
-            print!("{output}");
-        }
-        return;
+        return terminate(render_json(&fetched_rows), options);
     }
-    let output = render_with_color(
-        &fetched_rows,
-        logo.as_deref(),
-        width,
-        height,
-        options.icons,
-        theme.color_enabled(options.color.enabled(stdout_is_terminal)),
-    );
+    terminate(
+        render_with_color(
+            &fetched_rows,
+            logo.as_deref(),
+            width,
+            height,
+            options.icons,
+            options.color.enabled(stdout_is_terminal),
+            theme,
+        ),
+        options,
+    )
+}
+
+fn terminate(output: String, options: &Options) -> String {
     if options.no_terminator {
-        print!("{}", output.strip_suffix('\n').unwrap_or(&output));
+        output.strip_suffix('\n').unwrap_or(&output).to_owned()
     } else {
-        print!("{output}");
+        output
     }
 }
 
@@ -160,6 +184,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         no_term: false,
         verbose: false,
         probe: false,
+        interactive: false,
         #[cfg(feature = "json")]
         json: false,
     };
@@ -195,6 +220,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
             "--probe" | "--debug-sysinfo" => options.probe = true,
+            "--interactive" | "-i" => options.interactive = true,
             "--no-icons" => options.icons = IconMode::Off,
             "--json" => {
                 #[cfg(feature = "json")]
@@ -340,12 +366,6 @@ impl ColorMode {
     }
 }
 
-impl Theme {
-    fn color_enabled(self, color_enabled: bool) -> bool {
-        color_enabled && self != Self::Mono
-    }
-}
-
 fn detect_theme(stdout_is_terminal: bool, colorfgbg: Option<&str>) -> Theme {
     if !stdout_is_terminal {
         return Theme::Subtle;
@@ -474,6 +494,91 @@ fn resize_seen() -> bool {
     false
 }
 
+#[cfg(unix)]
+struct InteractiveTerminal {
+    stty_state: String,
+}
+
+#[cfg(unix)]
+impl InteractiveTerminal {
+    fn enter() -> Result<Self, String> {
+        let output = stty(&["-g"])?;
+        if !output.status.success() {
+            return Err("cannot read terminal mode".into());
+        }
+        let stty_state = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if !stty(&["-icanon", "-echo", "min", "0", "time", "1"])?
+            .status
+            .success()
+        {
+            return Err("cannot configure terminal".into());
+        }
+        Ok(Self { stty_state })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for InteractiveTerminal {
+    fn drop(&mut self) {
+        let _ = stty(&[&self.stty_state]);
+    }
+}
+
+#[cfg(unix)]
+fn stty(args: &[&str]) -> Result<std::process::Output, String> {
+    let terminal =
+        fs::File::open("/dev/tty").map_err(|error| format!("cannot open terminal: {error}"))?;
+    Command::new("stty")
+        .args(args)
+        .stdin(terminal)
+        .output()
+        .map_err(|error| format!("cannot configure terminal: {error}"))
+}
+
+fn run_interactive(
+    options: &Options,
+    theme: Theme,
+    stdout_is_terminal: bool,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let _terminal = InteractiveTerminal::enter()?;
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let mut stdin = io::stdin().lock();
+            let mut byte = [0];
+            loop {
+                match stdin.read(&mut byte) {
+                    Ok(0) => continue,
+                    Ok(_) if matches!(byte[0], b'q' | b'Q') => {
+                        let _ = sender.send(());
+                        return;
+                    }
+                    Ok(_) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        loop {
+            print!(
+                "\x1b[2J\x1b[H{}",
+                output(options, theme, stdout_is_terminal)
+            );
+            io::stdout()
+                .flush()
+                .map_err(|error| format!("cannot write terminal: {error}"))?;
+            if receiver.recv_timeout(INTERACTIVE_INTERVAL).is_ok() {
+                return Ok(());
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (options, theme, stdout_is_terminal);
+        Err("--interactive is only supported on macOS and Linux".into())
+    }
+}
+
 fn terminal_size() -> (usize, usize) {
     #[cfg(unix)]
     if io::stdout().is_terminal() {
@@ -510,7 +615,7 @@ fn render(
     height: usize,
     icons: IconMode,
 ) -> String {
-    render_with_color(rows, logo, width, height, icons, false)
+    render_with_color(rows, logo, width, height, icons, false, Theme::Subtle)
 }
 
 fn render_with_color(
@@ -520,6 +625,7 @@ fn render_with_color(
     height: usize,
     icons: IconMode,
     color: bool,
+    theme: Theme,
 ) -> String {
     let identity = rows
         .iter()
@@ -559,7 +665,7 @@ fn render_with_color(
             let left = logo_lines.get(index).copied().unwrap_or("");
             let right = if let Some(header) = header.as_deref() {
                 if index == 0 {
-                    colorize(header, color)
+                    header.to_owned()
                 } else if index == 1 {
                     "-".repeat(display_width(header))
                 } else {
@@ -568,7 +674,7 @@ fn render_with_color(
                             let label = label_text(label, icons);
                             format!(
                                 "{} {}",
-                                colorize(&pad_display(&label, info_width), color),
+                                colorize(&pad_display(&label, info_width), color, theme),
                                 truncate(value, width.saturating_sub(info_width + 4))
                             )
                         })
@@ -580,7 +686,7 @@ fn render_with_color(
                         let label = label_text(label, icons);
                         format!(
                             "{} {}",
-                            colorize(&pad_display(&label, info_width), color),
+                            colorize(&pad_display(&label, info_width), color, theme),
                             truncate(value, width.saturating_sub(info_width + 4))
                         )
                     })
@@ -593,19 +699,19 @@ fn render_with_color(
             lines.extend(logo_lines.iter().map(|line| (*line).to_owned()));
         }
         if let Some(header) = header.as_deref() {
-            lines.push(colorize(header, color));
+            lines.push(header.to_owned());
             lines.push("-".repeat(display_width(header)));
         }
         for (label, value) in rows {
             let label = label_text(label, icons);
             let value = truncate(value, width.saturating_sub(info_width + 1));
             if width <= 30 {
-                lines.push(colorize(&truncate(&label, width), color));
+                lines.push(colorize(&truncate(&label, width), color, theme));
                 lines.push(truncate(value.as_str(), width));
             } else {
                 lines.push(format!(
                     "{} {value}",
-                    colorize(&pad_display(&label, info_width), color)
+                    colorize(&pad_display(&label, info_width), color, theme)
                 ));
             }
         }
@@ -680,9 +786,13 @@ fn json_escape(value: &str) -> String {
     escaped
 }
 
-fn colorize(value: &str, color: bool) -> String {
+fn colorize(value: &str, color: bool, theme: Theme) -> String {
     if color {
-        format!("{ANSI_LABEL}{value}{ANSI_RESET}")
+        let label = match theme {
+            Theme::Subtle => ANSI_LABEL_SUBTLE,
+            Theme::Mono => ANSI_LABEL_MONO,
+        };
+        format!("{label}{value}{ANSI_RESET}")
     } else {
         value.to_owned()
     }
@@ -1289,6 +1399,7 @@ mod tests {
                 "--no-terminator",
                 "--no-term",
                 "--verbose",
+                "-i",
             ]
             .into_iter()
             .map(str::to_owned),
@@ -1296,7 +1407,7 @@ mod tests {
         .unwrap();
         assert_eq!(options.color, ColorMode::Never);
         assert_eq!(options.icons, IconMode::Off);
-        assert!(options.no_terminator && options.no_term && options.verbose);
+        assert!(options.no_terminator && options.no_term && options.verbose && options.interactive);
         assert!(!help && !version);
     }
 
@@ -1429,8 +1540,12 @@ mod tests {
     fn color_wraps_labels_without_changing_layout_width() {
         let rows = vec![("os".into(), "macos".into())];
         assert_eq!(
-            render_with_color(&rows, None, 40, 4, IconMode::Off, true),
-            "\x1b[36mOS: \x1b[0m macos\n"
+            render_with_color(&rows, None, 40, 4, IconMode::Off, true, Theme::Subtle),
+            "\x1b[2;36mOS: \x1b[0m macos\n"
+        );
+        assert_eq!(
+            super::colorize("OS:", true, Theme::Mono),
+            "\x1b[2mOS:\x1b[0m"
         );
     }
 

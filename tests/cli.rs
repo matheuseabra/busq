@@ -1,4 +1,8 @@
-use std::{fs, process::Command};
+use std::{
+    fs,
+    io::Write,
+    process::{Command, Stdio},
+};
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
@@ -37,6 +41,59 @@ fn forced_color_stays_plain_when_stdout_is_piped() {
 
     assert!(output.status.success());
     assert!(!output.stdout.windows(2).any(|bytes| bytes == b"\x1b["));
+}
+
+#[test]
+fn interactive_requires_a_terminal() {
+    let output = Command::new(env!("CARGO_BIN_EXE_minfetch"))
+        .arg("--interactive")
+        .output()
+        .expect("run interactive minfetch");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires a terminal"));
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_exits_on_q() {
+    let transcript =
+        std::env::temp_dir().join(format!("minfetch-interactive-{}", std::process::id()));
+    let binary = env!("CARGO_BIN_EXE_minfetch");
+    let mut command = Command::new("script");
+    #[cfg(target_os = "macos")]
+    command.args([
+        "-q",
+        transcript.to_str().expect("transcript path"),
+        binary,
+        "--interactive",
+    ]);
+    #[cfg(target_os = "linux")]
+    command.args([
+        "-q",
+        "-c",
+        &format!("{binary} --interactive"),
+        transcript.to_str().expect("transcript path"),
+    ]);
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start interactive minfetch");
+    child
+        .stdin
+        .as_mut()
+        .expect("interactive stdin")
+        .write_all(b"q")
+        .expect("send q");
+    assert!(
+        child
+            .wait()
+            .expect("wait for interactive minfetch")
+            .success()
+    );
+    fs::remove_file(transcript).expect("remove transcript");
 }
 
 #[test]

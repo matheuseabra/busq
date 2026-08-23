@@ -39,6 +39,7 @@ cargo build --release --features sysinfo
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
 | `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
+| `--interactive`, `-i` | Refresh every second until `q` is pressed. Requires a TTY. |
 | `--logo [none\|auto\|PATH]` | Show the built-in OS logo; use `none` to disable it, `auto` explicitly, or load a file. |
 | `--no-term` | Omit the uptime row. |
 | `--no-terminator` | Omit the final newline. |
@@ -87,8 +88,9 @@ width allows it. Narrow panes stack the logo above the rows. At 30 columns or le
 value gets its own line. Values truncate with a Unicode-width-aware ellipsis, and rows beyond the
 height limit are omitted.
 
-When stdout is not a TTY, minfetch omits the logo and ANSI escapes. A failed fetch renders `—` in
-its row and does not stop the other rows. `--verbose` adds the underlying failure to stderr.
+Labels are dimmer than values when ANSI output is enabled. When stdout is not a TTY, minfetch omits
+the logo and ANSI escapes; `--interactive` rejects non-TTY input or output. A failed fetch renders
+`—` in its row and does not stop the other rows. `--verbose` adds the underlying failure to stderr.
 
 ## Homebrew
 

@@ -41,6 +41,7 @@ stretch goal.
 | H-11 | Bendable measured size budget | In vision |
 | H-12 | Temperature and GPU rows | In vision |
 
-The product remains intentionally smaller than fastfetch: no interactive TUI,
-daemon/watch mode, OS-matched logo library, full theme system, package counts,
-or GPU load/temperature/power charts.
+The product remains intentionally smaller than fastfetch: no interactive TUI
+(the `--interactive` refresh loop only redraws the readout), daemon/watch mode,
+OS-matched logo library, full theme system, package counts, or GPU
+load/temperature/power charts.
