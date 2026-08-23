@@ -34,10 +34,17 @@ enum Theme {
     Mono,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IconMode {
+    Unicode,
+    Nerd,
+    Off,
+}
+
 #[derive(Default)]
 struct Config {
     color: Option<ColorMode>,
-    icons: Option<bool>,
+    icons: Option<IconMode>,
     logo: Option<String>,
     rows: Option<Vec<String>>,
     theme: Option<Theme>,
@@ -45,7 +52,7 @@ struct Config {
 
 struct Options {
     color: ColorMode,
-    icons: bool,
+    icons: IconMode,
     logo: Option<String>,
     rows: Option<Vec<String>>,
     theme: Option<Theme>,
@@ -72,7 +79,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off] [--logo none|auto|PATH]",
+            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo none|auto|PATH]",
             version_string(),
             if cfg!(feature = "json") {
                 " [--json]"
@@ -142,7 +149,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
         } else {
             config.color.unwrap_or(ColorMode::Auto)
         },
-        icons: config.icons.unwrap_or(true),
+        icons: config.icons.unwrap_or(IconMode::Unicode),
         logo: config.logo,
         rows: config.rows,
         theme: config.theme,
@@ -185,7 +192,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             "--no-term" => options.no_term = true,
             "--verbose" => options.verbose = true,
             "--probe" | "--debug-sysinfo" => options.probe = true,
-            "--no-icons" => options.icons = false,
+            "--no-icons" => options.icons = IconMode::Off,
             "--json" => {
                 #[cfg(feature = "json")]
                 {
@@ -196,10 +203,11 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Options, bool, 
             }
             "--icons" => {
                 options.icons = match args.next().as_deref() {
-                    Some("on") => true,
-                    Some("off") => false,
+                    Some("on") => IconMode::Unicode,
+                    Some("off") => IconMode::Off,
+                    Some("nerd") => IconMode::Nerd,
                     Some(value) => return Err(format!("invalid --icons value {value}")),
-                    None => return Err("--icons needs on or off".into()),
+                    None => return Err("--icons needs on, off, or nerd".into()),
                 }
             }
             "--logo" => options.logo = Some(args.next().ok_or("--logo needs a path")?),
@@ -264,7 +272,7 @@ fn parse_config(content: &str) -> Result<Config, String> {
             .ok_or_else(|| format!("config line {} needs key = value", line_number + 1))?;
         match key {
             "color" => config.color = Some(parse_color(value, line_number + 1)?),
-            "icons" => config.icons = Some(parse_on_off(value, "icons", line_number + 1)?),
+            "icons" => config.icons = Some(parse_icons(value, line_number + 1)?),
             "logo" => config.logo = Some(value.to_owned()),
             "rows" => config.rows = Some(parse_rows(value, line_number + 1)?),
             "theme" => {
@@ -294,11 +302,12 @@ fn parse_color(value: &str, line_number: usize) -> Result<ColorMode, String> {
     }
 }
 
-fn parse_on_off(value: &str, key: &str, line_number: usize) -> Result<bool, String> {
+fn parse_icons(value: &str, line_number: usize) -> Result<IconMode, String> {
     match value {
-        "on" => Ok(true),
-        "off" => Ok(false),
-        _ => Err(format!("invalid {key} on config line {line_number}")),
+        "on" => Ok(IconMode::Unicode),
+        "off" => Ok(IconMode::Off),
+        "nerd" => Ok(IconMode::Nerd),
+        _ => Err(format!("invalid icons on config line {line_number}")),
     }
 }
 
@@ -481,7 +490,7 @@ fn render(
     logo: Option<&str>,
     width: usize,
     height: usize,
-    icons: bool,
+    icons: IconMode,
 ) -> String {
     render_with_color(rows, logo, width, height, icons, false)
 }
@@ -491,7 +500,7 @@ fn render_with_color(
     logo: Option<&str>,
     width: usize,
     height: usize,
-    icons: bool,
+    icons: IconMode,
     color: bool,
 ) -> String {
     let identity = rows
@@ -696,27 +705,46 @@ fn pad_display(value: &str, width: usize) -> String {
     )
 }
 
-fn icon(label: &str) -> String {
-    let symbol = match label {
-        "os" => "◉",
-        "kernel" => "◇",
-        "uptime" => "◷",
-        "shell" => "›",
-        "terminal" => "▹",
-        "cpu" => "◈",
-        "gpu" => "◐",
-        "memory" => "▣",
-        "disk" => "◫",
-        "desktop" => "▧",
-        "temperature" => "◌",
-        _ => "•",
+fn icon(label: &str, nerd: bool) -> String {
+    let symbol = if nerd {
+        match label {
+            "hostname" => "\u{f0ac}",
+            "user" => "\u{f007}",
+            "os" => "\u{f17c}",
+            "kernel" => "\u{f0c9}",
+            "uptime" => "\u{f017}",
+            "shell" | "terminal" => "\u{f120}",
+            "cpu" => "\u{f2db}",
+            "gpu" | "desktop" => "\u{f108}",
+            "memory" => "\u{f538}",
+            "disk" => "\u{f0a0}",
+            "temperature" => "\u{f2c9}",
+            _ => "\u{f128}",
+        }
+    } else {
+        match label {
+            "os" => "◉",
+            "kernel" => "◇",
+            "uptime" => "◷",
+            "shell" => "›",
+            "terminal" => "▹",
+            "cpu" => "◈",
+            "gpu" => "◐",
+            "memory" => "▣",
+            "disk" => "◫",
+            "desktop" => "▧",
+            "temperature" => "◌",
+            _ => "•",
+        }
     };
-    format!("{symbol} {}", label_text(label, false))
+    format!("{symbol} {}", label_text(label, IconMode::Off))
 }
 
-fn label_text(label: &str, icons: bool) -> String {
-    if icons {
-        return icon(label);
+fn label_text(label: &str, icons: IconMode) -> String {
+    match icons {
+        IconMode::Unicode => return icon(label, false),
+        IconMode::Nerd => return icon(label, true),
+        IconMode::Off => {}
     }
     let label = match label {
         "os" => "OS",
@@ -1076,10 +1104,11 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, Theme, detect_theme, format_uptime, format_usage, linux_gpu,
-        linux_temperature, load_logo, mem_kib, parse_args, parse_boottime, parse_colorfgbg,
-        parse_config, parse_cpuinfo, parse_drm_uevent, parse_ioreg_temperature, parse_millidegrees,
-        parse_system_profiler_gpu, parse_vm_stat, render, render_probe, render_with_color,
+        ColorMode, DEFAULT_LOGO, IconMode, Theme, detect_theme, format_uptime, format_usage,
+        linux_gpu, linux_temperature, load_logo, mem_kib, parse_args, parse_boottime,
+        parse_colorfgbg, parse_config, parse_cpuinfo, parse_drm_uevent, parse_ioreg_temperature,
+        parse_millidegrees, parse_system_profiler_gpu, parse_vm_stat, render, render_probe,
+        render_with_color,
     };
 
     #[test]
@@ -1201,7 +1230,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(options.color, ColorMode::Never);
-        assert!(!options.icons && options.no_terminator && options.no_term && options.verbose);
+        assert_eq!(options.icons, IconMode::Off);
+        assert!(options.no_terminator && options.no_term && options.verbose);
         assert!(!help && !version);
     }
 
@@ -1238,7 +1268,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.color, Some(ColorMode::Never));
-        assert_eq!(config.icons, Some(false));
+        assert_eq!(config.icons, Some(IconMode::Off));
         assert_eq!(config.logo.as_deref(), Some("none"));
         assert_eq!(
             config.rows.as_deref(),
@@ -1303,7 +1333,7 @@ mod tests {
     fn color_wraps_labels_without_changing_layout_width() {
         let rows = vec![("os".into(), "macos".into())];
         assert_eq!(
-            render_with_color(&rows, None, 40, 4, false, true),
+            render_with_color(&rows, None, 40, 4, IconMode::Off, true),
             "\x1b[36mOS: \x1b[0m macos\n"
         );
     }
@@ -1316,14 +1346,17 @@ mod tests {
     #[test]
     fn layout_stacks_logo_in_a_narrow_pane() {
         let rows = vec![("os".into(), "macos".into())];
-        assert_eq!(render(&rows, Some("/\\"), 8, 4, false), "/\\\nOS:\nma…\n");
+        assert_eq!(
+            render(&rows, Some("/\\"), 8, 4, IconMode::Off),
+            "/\\\nOS:\nma…\n"
+        );
     }
 
     #[test]
     fn layout_uses_side_by_side_logo_when_wide() {
         let rows = vec![("os".into(), "macos".into())];
         assert_eq!(
-            render(&rows, Some("/\\"), 20, 4, false),
+            render(&rows, Some("/\\"), 20, 4, IconMode::Off),
             "/\\  OS:  macos\n"
         );
     }
@@ -1335,7 +1368,7 @@ mod tests {
             ("user".into(), "matheus".into()),
         ];
         assert_eq!(
-            render(&rows, None, 30, 4, false),
+            render(&rows, None, 30, 4, IconMode::Off),
             "OS:\nmacos\nUser:\nmatheus\n"
         );
     }
@@ -1343,7 +1376,7 @@ mod tests {
     #[test]
     fn layout_truncates_to_height() {
         let rows = vec![("one".into(), "1".into()), ("two".into(), "2".into())];
-        assert_eq!(render(&rows, None, 80, 1, false), "One:  1\n");
+        assert_eq!(render(&rows, None, 80, 1, IconMode::Off), "One:  1\n");
     }
 
     #[test]
@@ -1366,7 +1399,7 @@ mod tests {
         assert!(rows.iter().all(|(_, value)| value == super::MISSING));
         assert_eq!(errors.len(), labels.len());
         assert!(errors.iter().all(|error| error.contains("fixture failure")));
-        let output = super::render(&rows, None, 80, 20, false);
+        let output = super::render(&rows, None, 80, 20, IconMode::Off);
         assert_eq!(output.matches(super::MISSING).count(), rows.len());
     }
 }
