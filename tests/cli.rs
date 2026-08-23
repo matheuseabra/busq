@@ -13,7 +13,7 @@ fn piped_output_is_plain_and_has_no_logo() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
     assert!(!stdout.contains("\x1b["));
-    assert!(stdout.contains("hostname"));
+    assert!(stdout.contains('@'));
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn empty_shell_is_rendered_as_missing() {
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|line| line.contains("shell") && line.ends_with('—'))
+            .any(|line| line.contains("Shell:") && line.ends_with('—'))
     );
 }
 
@@ -136,7 +136,7 @@ fn non_utf8_user_is_rendered_as_missing() {
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|line| line.contains("user") && line.ends_with('—'))
+            .any(|line| line.starts_with("—@"))
     );
 }
 
@@ -171,7 +171,7 @@ fn verbose_reports_missing_environment_rows_on_stderr() {
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|line| line.contains("shell") && line.ends_with('—'))
+            .any(|line| line.contains("Shell:") && line.ends_with('—'))
     );
 }
 
@@ -202,9 +202,9 @@ fn config_defaults_apply_and_flags_override_them() {
     assert!(configured.status.success() && overridden.status.success());
     let configured_stdout = String::from_utf8_lossy(&configured.stdout);
     let overridden_stdout = String::from_utf8_lossy(&overridden.stdout);
-    assert!(configured_stdout.contains("os") && configured_stdout.contains("user"));
-    assert!(!configured_stdout.contains("hostname"));
-    assert!(overridden_stdout.contains("• os"));
+    assert!(configured_stdout.contains("OS:") && configured_stdout.contains("User:"));
+    assert!(!configured_stdout.contains("Hostname:"));
+    assert!(overridden_stdout.contains("◉ OS:"));
 }
 
 #[cfg(not(feature = "json"))]

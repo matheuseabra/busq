@@ -120,7 +120,7 @@ becoming a resident/watch process.
 missing/exotic systems, and packaging for a widget use case.
 
 Tasks:
-- [x] Built-in default neutral logo (three small lines), omitted from piped output.
+- [x] Opt-in neutral logo (`--logo auto`), omitted from piped output.
 - [x] Flags: `--logo none|auto|path` and `--icons on|off`.
 - [x] `--no-terminator` omits the trailing newline for widget use.
 - [x] `--color <auto|always|never>` colors labels on a TTY while keeping piped output plain.

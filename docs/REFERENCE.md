@@ -61,7 +61,7 @@ comment. Supported keys are `color`, `icons`, `logo`, `rows`, and `theme`.
 ```text
 color = auto
 icons = on
-logo = auto
+logo = none
 rows = hostname, user, os, shell, cpu, memory
 theme = subtle
 ```

@@ -7,6 +7,7 @@ use std::{
     io::{self, IsTerminal},
     path::{Path, PathBuf},
     process::Command,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -224,6 +225,10 @@ const ROW_NAMES: &[&str] = &[
     "temperature",
     "gpu",
 ];
+const DEFAULT_ROWS: &[&str] = &[
+    "hostname", "user", "os", "kernel", "uptime", "shell", "terminal", "cpu", "gpu", "memory",
+    "disk",
+];
 
 fn load_config(explicit: Option<&str>) -> Result<Config, String> {
     let path = explicit
@@ -348,27 +353,28 @@ fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, V
             &mut errors,
         ),
         ("os".into(), env::consts::OS.into()),
-        fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
+        fetched_row("kernel", command("uname -sr"), &mut errors),
         fetched_row("uptime", uptime(), &mut errors),
+        fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
+        fetched_row("terminal", environment_value(&["TERM"]), &mut errors),
         fetched_row("cpu", cpu(), &mut errors),
+        fetched_row("gpu", gpu(), &mut errors),
         fetched_row("memory", memory(), &mut errors),
         fetched_row("disk", disk(), &mut errors),
-        fetched_row("kernel", command("uname -sr"), &mut errors),
-        fetched_row("terminal", environment_value(&["TERM"]), &mut errors),
         fetched_row(
             "desktop",
             environment_value(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
             &mut errors,
         ),
         fetched_row("temperature", temperature(), &mut errors),
-        fetched_row("gpu", gpu(), &mut errors),
     ];
     if no_term {
         rows.retain(|(label, _)| label != "uptime");
     }
-    if let Some(selected) = selected {
-        rows.retain(|(label, _)| selected.iter().any(|value| value == label));
-    }
+    let selected = selected
+        .map(|rows| rows.iter().map(String::as_str).collect())
+        .unwrap_or_else(|| DEFAULT_ROWS.to_vec());
+    rows.retain(|(label, _)| selected.iter().any(|value| *value == label));
     (rows, errors)
 }
 
@@ -388,7 +394,8 @@ fn load_logo(path: Option<&str>, stdout_is_terminal: bool) -> Option<String> {
     }
     match path {
         Some("none") => None,
-        Some("auto") | None => Some(DEFAULT_LOGO.into()),
+        Some("auto") => Some(DEFAULT_LOGO.into()),
+        None => None,
         Some(path) => fs::read_to_string(path).ok(),
     }
 }
@@ -487,9 +494,21 @@ fn render_with_color(
     icons: bool,
     color: bool,
 ) -> String {
+    let identity = rows
+        .iter()
+        .find(|(label, _)| label == "user")
+        .zip(rows.iter().find(|(label, _)| label == "hostname"))
+        .map(|(user, hostname)| format!("{}@{}", user.1, hostname.1));
+    let rows = if identity.is_some() {
+        rows.iter()
+            .filter(|(label, _)| label != "user" && label != "hostname")
+            .collect::<Vec<_>>()
+    } else {
+        rows.iter().collect()
+    };
     let labels: Vec<String> = rows
         .iter()
-        .map(|(label, _)| if icons { icon(label) } else { label.clone() })
+        .map(|(label, _)| label_text(label, icons))
         .collect();
     let info_width = labels
         .iter()
@@ -506,29 +525,52 @@ fn render_with_color(
         .unwrap_or(0);
     let mut lines = Vec::new();
 
+    let header = identity.map(|value| truncate(&value, width));
     if !logo_lines.is_empty() && width >= logo_width + info_width + 4 {
-        let rows_height = rows.len().max(logo_lines.len());
+        let rows_height = (rows.len() + header.iter().count() * 2).max(logo_lines.len());
         for index in 0..rows_height {
             let left = logo_lines.get(index).copied().unwrap_or("");
-            let right = rows
-                .get(index)
-                .map(|(label, value)| {
-                    let label = if icons { icon(label) } else { label.clone() };
-                    format!(
-                        "{}{}",
-                        colorize(&pad_display(&label, info_width), color),
-                        truncate(value, width.saturating_sub(info_width + 4))
-                    )
-                })
-                .unwrap_or_default();
+            let right = if let Some(header) = header.as_deref() {
+                if index == 0 {
+                    colorize(header, color)
+                } else if index == 1 {
+                    "-".repeat(display_width(header))
+                } else {
+                    rows.get(index - 2)
+                        .map(|(label, value)| {
+                            let label = label_text(label, icons);
+                            format!(
+                                "{} {}",
+                                colorize(&pad_display(&label, info_width), color),
+                                truncate(value, width.saturating_sub(info_width + 4))
+                            )
+                        })
+                        .unwrap_or_default()
+                }
+            } else {
+                rows.get(index)
+                    .map(|(label, value)| {
+                        let label = label_text(label, icons);
+                        format!(
+                            "{} {}",
+                            colorize(&pad_display(&label, info_width), color),
+                            truncate(value, width.saturating_sub(info_width + 4))
+                        )
+                    })
+                    .unwrap_or_default()
+            };
             lines.push(format!("{}  {right}", pad_display(left, logo_width)));
         }
     } else {
         if !logo_lines.is_empty() && logo_lines.len() + rows.len() <= height {
             lines.extend(logo_lines.iter().map(|line| (*line).to_owned()));
         }
+        if let Some(header) = header.as_deref() {
+            lines.push(colorize(header, color));
+            lines.push("-".repeat(display_width(header)));
+        }
         for (label, value) in rows {
-            let label = if icons { icon(label) } else { label.clone() };
+            let label = label_text(label, icons);
             let value = truncate(value, width.saturating_sub(info_width + 1));
             if width <= 30 {
                 lines.push(colorize(&truncate(&label, width), color));
@@ -656,12 +698,37 @@ fn pad_display(value: &str, width: usize) -> String {
 
 fn icon(label: &str) -> String {
     let symbol = match label {
+        "os" => "◉",
+        "kernel" => "◇",
+        "uptime" => "◷",
+        "shell" => "›",
+        "terminal" => "▹",
         "cpu" => "◈",
+        "gpu" => "◐",
         "memory" => "▣",
         "disk" => "◫",
+        "desktop" => "▧",
+        "temperature" => "◌",
         _ => "•",
     };
-    format!("{symbol} {label}")
+    format!("{symbol} {}", label_text(label, false))
+}
+
+fn label_text(label: &str, icons: bool) -> String {
+    if icons {
+        return icon(label);
+    }
+    let label = match label {
+        "os" => "OS",
+        "cpu" => "CPU",
+        "gpu" => "GPU",
+        _ => label,
+    };
+    let mut characters = label.chars();
+    match characters.next() {
+        Some(first) => format!("{}{}:", first.to_ascii_uppercase(), characters.as_str()),
+        None => String::new(),
+    }
 }
 
 fn first_env(names: &[&str]) -> Option<String> {
@@ -697,12 +764,24 @@ fn command(command: &str) -> FetchResult {
 }
 
 fn disk() -> FetchResult {
-    let native = command("df -h /").and_then(|output| {
-        output
+    let native = command("df -kP /").and_then(|output| {
+        let fields = output
             .lines()
             .nth(1)
-            .map(str::to_owned)
-            .ok_or_else(|| "df -h /: returned no filesystem row".into())
+            .ok_or_else(|| "df -kP /: returned no filesystem row".to_owned())?
+            .split_whitespace()
+            .collect::<Vec<_>>();
+        let total = fields
+            .get(1)
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or_else(|| "df -kP /: invalid total".to_owned())?
+            * 1024;
+        let used = fields
+            .get(2)
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or_else(|| "df -kP /: invalid used".to_owned())?
+            * 1024;
+        Ok(format_usage(used, total))
     });
     native.or_else(|error| sysinfo_disk().ok_or(error))
 }
@@ -714,14 +793,55 @@ fn uptime() -> FetchResult {
             .next()
             .and_then(|value| value.parse::<u64>().ok())
     {
-        return Ok(format!(
-            "{}d {}h {}m",
-            seconds / 86400,
-            seconds / 3600 % 24,
-            seconds / 60 % 60
-        ));
+        return Ok(format_uptime(seconds));
     }
-    command("sysctl -n kern.boottime")
+    command("sysctl -n kern.boottime").and_then(|value| {
+        parse_boottime(&value)
+            .and_then(|boot| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .ok()?
+                    .as_secs()
+                    .checked_sub(boot)
+            })
+            .map(format_uptime)
+            .ok_or_else(|| "kern.boottime: invalid value".into())
+    })
+}
+
+fn parse_boottime(value: &str) -> Option<u64> {
+    value
+        .split("sec = ")
+        .nth(1)?
+        .split(|character: char| !character.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
+
+fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86_400;
+    let hours = seconds / 3_600 % 24;
+    let minutes = seconds / 60 % 60;
+    match (days, hours, minutes) {
+        (0, 0, minutes) => format!("{minutes}m"),
+        (0, hours, minutes) => format!("{hours}h {minutes}m"),
+        (days, hours, minutes) => format!("{days}d {hours}h {minutes}m"),
+    }
+}
+
+fn format_usage(used: u64, total: u64) -> String {
+    let gib = 1024_f64.powi(3);
+    let percent = if total == 0 {
+        0
+    } else {
+        used.saturating_mul(100) / total
+    };
+    format!(
+        "{:.2} GiB / {:.2} GiB ({percent}%)",
+        used as f64 / gib,
+        total as f64 / gib
+    )
 }
 
 fn cpu() -> FetchResult {
@@ -859,10 +979,9 @@ fn memory() -> FetchResult {
         && let Some(total) = mem_kib(&info, "MemTotal")
     {
         let available = mem_kib(&info, "MemAvailable").unwrap_or(total);
-        return Ok(format!(
-            "{} / {} MiB",
-            total.saturating_sub(available) / 1024,
-            total / 1024
+        return Ok(format_usage(
+            total.saturating_sub(available) * 1024,
+            total * 1024,
         ));
     }
 
@@ -874,11 +993,7 @@ fn memory() -> FetchResult {
             .ok()
             .and_then(|info| parse_vm_stat(&info, total))
             .unwrap_or(total);
-        Ok(format!(
-            "{} / {} MiB",
-            used / 1024 / 1024,
-            total / 1024 / 1024
-        ))
+        Ok(format_usage(used, total))
     })();
     native.or_else(|error| sysinfo_memory().ok_or(error))
 }
@@ -900,13 +1015,7 @@ fn sysinfo_cpu() -> Option<String> {
 fn sysinfo_memory() -> Option<String> {
     let system = sysinfo::System::new_all();
     let total = system.total_memory();
-    (total > 0).then(|| {
-        format!(
-            "{} / {} MiB",
-            total.saturating_sub(system.available_memory()) / 1024 / 1024,
-            total / 1024 / 1024
-        )
-    })
+    (total > 0).then(|| format_usage(total.saturating_sub(system.available_memory()), total))
 }
 
 #[cfg(not(feature = "sysinfo"))]
@@ -923,13 +1032,7 @@ fn sysinfo_disk() -> Option<String> {
         .find(|disk| disk.mount_point() == Path::new("/"))
         .or_else(|| disks.list().first())?;
     let total = disk.total_space();
-    (total > 0).then(|| {
-        format!(
-            "{} / {} GiB",
-            total.saturating_sub(disk.available_space()) / 1024 / 1024 / 1024,
-            total / 1024 / 1024 / 1024
-        )
-    })
+    (total > 0).then(|| format_usage(total.saturating_sub(disk.available_space()), total))
 }
 
 #[cfg(not(feature = "sysinfo"))]
@@ -977,15 +1080,28 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, DEFAULT_LOGO, Theme, detect_theme, linux_gpu, linux_temperature, load_logo,
-        mem_kib, parse_args, parse_colorfgbg, parse_config, parse_cpuinfo, parse_drm_uevent,
-        parse_ioreg_temperature, parse_millidegrees, parse_system_profiler_gpu, parse_vm_stat,
-        render, render_probe, render_with_color,
+        ColorMode, DEFAULT_LOGO, Theme, detect_theme, format_uptime, format_usage, linux_gpu,
+        linux_temperature, load_logo, mem_kib, parse_args, parse_boottime, parse_colorfgbg,
+        parse_config, parse_cpuinfo, parse_drm_uevent, parse_ioreg_temperature, parse_millidegrees,
+        parse_system_profiler_gpu, parse_vm_stat, render, render_probe, render_with_color,
     };
 
     #[test]
     fn parses_meminfo_values() {
         assert_eq!(mem_kib("MemTotal: 1024 kB", "MemTotal"), Some(1024));
+    }
+
+    #[test]
+    fn formats_compact_fastfetch_style_stats() {
+        assert_eq!(format_uptime(93_784), "1d 2h 3m");
+        assert_eq!(
+            parse_boottime("{ sec = 1787264167, usec = 728186 }"),
+            Some(1_787_264_167)
+        );
+        assert_eq!(
+            format_usage(8 * 1024_u64.pow(3), 16 * 1024_u64.pow(3)),
+            "8.00 GiB / 16.00 GiB (50%)"
+        );
     }
 
     #[test]
@@ -1065,8 +1181,8 @@ mod tests {
     }
 
     #[test]
-    fn logo_modes_select_the_neutral_default() {
-        assert_eq!(load_logo(None, true).as_deref(), Some(DEFAULT_LOGO));
+    fn logo_modes_require_explicit_opt_in() {
+        assert!(load_logo(None, true).is_none());
         assert!(load_logo(Some("none"), true).is_none());
         assert_eq!(load_logo(Some("auto"), true).as_deref(), Some(DEFAULT_LOGO));
     }
@@ -1191,7 +1307,7 @@ mod tests {
         let rows = vec![("os".into(), "macos".into())];
         assert_eq!(
             render_with_color(&rows, None, 40, 4, false, true),
-            "\x1b[36mos \x1b[0m macos\n"
+            "\x1b[36mOS: \x1b[0m macos\n"
         );
     }
 
@@ -1203,13 +1319,16 @@ mod tests {
     #[test]
     fn layout_stacks_logo_in_a_narrow_pane() {
         let rows = vec![("os".into(), "macos".into())];
-        assert_eq!(render(&rows, Some("/\\"), 8, 4, false), "/\\\nos\nmac…\n");
+        assert_eq!(render(&rows, Some("/\\"), 8, 4, false), "/\\\nOS:\nma…\n");
     }
 
     #[test]
     fn layout_uses_side_by_side_logo_when_wide() {
         let rows = vec![("os".into(), "macos".into())];
-        assert_eq!(render(&rows, Some("/\\"), 20, 4, false), "/\\  os macos\n");
+        assert_eq!(
+            render(&rows, Some("/\\"), 20, 4, false),
+            "/\\  OS:  macos\n"
+        );
     }
 
     #[test]
@@ -1220,14 +1339,14 @@ mod tests {
         ];
         assert_eq!(
             render(&rows, None, 30, 4, false),
-            "os\nmacos\nuser\nmatheus\n"
+            "OS:\nmacos\nUser:\nmatheus\n"
         );
     }
 
     #[test]
     fn layout_truncates_to_height() {
         let rows = vec![("one".into(), "1".into()), ("two".into(), "2".into())];
-        assert_eq!(render(&rows, None, 80, 1, false), "one  1\n");
+        assert_eq!(render(&rows, None, 80, 1, false), "One:  1\n");
     }
 
     #[test]
@@ -1250,6 +1369,7 @@ mod tests {
         assert!(rows.iter().all(|(_, value)| value == super::MISSING));
         assert_eq!(errors.len(), labels.len());
         assert!(errors.iter().all(|error| error.contains("fixture failure")));
-        assert!(super::render(&rows, None, 80, 20, false).contains("hostname  —"));
+        let output = super::render(&rows, None, 80, 20, false);
+        assert_eq!(output.matches(super::MISSING).count(), rows.len());
     }
 }
