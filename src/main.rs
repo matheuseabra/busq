@@ -269,10 +269,11 @@ const ROW_NAMES: &[&str] = &[
     "desktop",
     "temperature",
     "gpu",
+    "packages",
 ];
 const DEFAULT_ROWS: &[&str] = &[
-    "hostname", "user", "os", "kernel", "uptime", "shell", "terminal", "wm", "cpu", "gpu",
-    "memory", "disk",
+    "hostname", "user", "os", "kernel", "shell", "terminal", "wm", "cpu", "gpu", "memory",
+    "packages", "disk",
 ];
 
 fn load_config(explicit: Option<&str>) -> Result<Config, String> {
@@ -393,9 +394,10 @@ fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, V
             environment_value(&["USER", "USERNAME"]),
             &mut errors,
         ),
-        ("os".into(), env::consts::OS.into()),
+        fetched_row("os", operating_system(), &mut errors),
         fetched_row("kernel", command("uname -sr"), &mut errors),
         fetched_row("uptime", uptime(), &mut errors),
+        fetched_row("packages", packages(), &mut errors),
         fetched_row("shell", environment_value(&["SHELL"]), &mut errors),
         fetched_row(
             "terminal",
@@ -851,6 +853,7 @@ fn icon(label: &str, nerd: bool) -> String {
             "shell" | "terminal" => "\u{f120}",
             "cpu" => "\u{f2db}",
             "gpu" | "desktop" | "wm" => "\u{f108}",
+            "packages" => "\u{f187}",
             "memory" => "\u{f538}",
             "disk" => "\u{f0a0}",
             "temperature" => "\u{f2c9}",
@@ -866,6 +869,7 @@ fn icon(label: &str, nerd: bool) -> String {
             "wm" => "▧",
             "cpu" => "◈",
             "gpu" => "◐",
+            "packages" => "▤",
             "memory" => "▣",
             "disk" => "◫",
             "desktop" => "▧",
@@ -887,6 +891,7 @@ fn label_text(label: &str, icons: IconMode) -> String {
         "cpu" => "CPU",
         "gpu" => "GPU",
         "wm" => "WM",
+        "disk" => "Disk (/)",
         _ => label,
     };
     let mut characters = label.chars();
@@ -910,6 +915,77 @@ fn hostname() -> FetchResult {
 
 fn environment_value(names: &[&str]) -> FetchResult {
     first_env(names).ok_or_else(|| format!("{} is unset", names.join("/")))
+}
+
+fn operating_system() -> FetchResult {
+    #[cfg(target_os = "macos")]
+    {
+        let product = command("sw_vers -productName")?;
+        let version = command("sw_vers -productVersion")?;
+        let build = command("sw_vers -buildVersion")?;
+        let architecture = command("uname -m")?;
+        return Ok(format_macos_os(&product, &version, &build, &architecture));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let name = fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|info| parse_os_release_name(&info))
+            .unwrap_or_else(|| "Linux".into());
+        let architecture = command("uname -m").unwrap_or_else(|_| env::consts::ARCH.into());
+        return Ok(format!("{name} {architecture}"));
+    }
+    #[allow(unreachable_code)]
+    Ok(env::consts::OS.into())
+}
+
+fn format_macos_os(product: &str, version: &str, build: &str, architecture: &str) -> String {
+    let codename = macos_codename(version);
+    match codename {
+        Some(codename) => format!("{product} {codename} {version} ({build}) {architecture}"),
+        None => format!("{product} {version} ({build}) {architecture}"),
+    }
+}
+
+fn macos_codename(version: &str) -> Option<&'static str> {
+    match version.split('.').next()?.parse::<u8>().ok()? {
+        11 => Some("Big Sur"),
+        12 => Some("Monterey"),
+        13 => Some("Ventura"),
+        14 => Some("Sonoma"),
+        15 => Some("Sequoia"),
+        26 => Some("Tahoe"),
+        _ => None,
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_os_release_name(info: &str) -> Option<String> {
+    info.lines()
+        .find_map(|line| line.strip_prefix("PRETTY_NAME=").map(str::trim))
+        .map(|value| value.trim_matches(['"', '\'']).to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn packages() -> FetchResult {
+    let brew = package_count("--formula")?;
+    let cask = package_count("--cask")?;
+    Ok(format!("{brew} (brew), {cask} (brew-cask)"))
+}
+
+fn package_count(kind: &str) -> FetchResult {
+    let output = Command::new("brew")
+        .args(["list", kind])
+        .output()
+        .map_err(|error| format!("brew list {kind}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("brew list {kind}: exited with {}", output.status));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count()
+        .to_string())
 }
 
 fn window_manager() -> FetchResult {
@@ -974,7 +1050,44 @@ fn disk() -> FetchResult {
             * 1024;
         Ok(format_usage(used, total))
     });
-    native.or_else(|error| sysinfo_disk().ok_or(error))
+    let usage = native.or_else(|error| sysinfo_disk().ok_or(error))?;
+    let filesystem = filesystem_type().unwrap_or_else(|_| "unknown".into());
+    Ok(format!("{usage} - {filesystem}"))
+}
+
+fn filesystem_type() -> FetchResult {
+    #[cfg(target_os = "macos")]
+    {
+        return command("mount").and_then(|info| {
+            parse_mount_filesystem(&info, "/")
+                .ok_or_else(|| "mount reported no filesystem for /".into())
+        });
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return command("stat -f -c %T /");
+    }
+    #[allow(unreachable_code)]
+    Err("filesystem type is unsupported on this platform".into())
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn parse_mount_filesystem(info: &str, mount_point: &str) -> Option<String> {
+    info.lines().find_map(|line| {
+        let (_, mounted) = line.split_once(" on ")?;
+        let (path, options) = mounted.split_once(" (")?;
+        if path != mount_point {
+            return None;
+        }
+        Some(
+            options
+                .trim_end_matches(')')
+                .split(',')
+                .next()?
+                .trim()
+                .to_owned(),
+        )
+    })
 }
 
 fn uptime() -> FetchResult {
@@ -1267,12 +1380,12 @@ fn parse_vm_stat(info: &str, total_bytes: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ColorMode, IconMode, Theme, detect_theme, format_uptime, format_usage, label_text,
-        linux_gpu, linux_temperature, load_config, load_logo, mem_kib, os_logo, parse_args,
-        parse_boottime, parse_color, parse_colorfgbg, parse_config, parse_cpuinfo,
-        parse_drm_uevent, parse_icons, parse_ioreg_temperature, parse_millidegrees, parse_rows,
-        parse_system_profiler_gpu, parse_vm_stat, parse_wmctrl, render, render_probe,
-        render_with_color,
+        ColorMode, IconMode, Theme, detect_theme, format_macos_os, format_uptime, format_usage,
+        label_text, linux_gpu, linux_temperature, load_config, load_logo, mem_kib, os_logo,
+        parse_args, parse_boottime, parse_color, parse_colorfgbg, parse_config, parse_cpuinfo,
+        parse_drm_uevent, parse_icons, parse_ioreg_temperature, parse_millidegrees,
+        parse_mount_filesystem, parse_rows, parse_system_profiler_gpu, parse_vm_stat, parse_wmctrl,
+        render, render_probe, render_with_color,
     };
 
     #[test]
@@ -1282,6 +1395,10 @@ mod tests {
 
     #[test]
     fn formats_compact_fastfetch_style_stats() {
+        assert_eq!(
+            format_macos_os("macOS", "15.7.8", "24G824", "arm64"),
+            "macOS Sequoia 15.7.8 (24G824) arm64"
+        );
         assert_eq!(format_uptime(3), "0m");
         assert_eq!(format_uptime(3_660), "1h 1m");
         assert_eq!(format_uptime(93_784), "1d 2h 3m");
@@ -1308,6 +1425,23 @@ mod tests {
         assert_eq!(
             parse_cpuinfo(fixture).as_deref(),
             Some("Test CPU (2 cores)")
+        );
+    }
+
+    #[test]
+    fn parses_os_release_name() {
+        assert_eq!(
+            super::parse_os_release_name("NAME=Linux\nPRETTY_NAME=\"Fedora Linux 42\"\n")
+                .as_deref(),
+            Some("Fedora Linux 42")
+        );
+    }
+
+    #[test]
+    fn parses_macos_mount_filesystem() {
+        assert_eq!(
+            parse_mount_filesystem("/dev/disk3s1s1 on / (apfs, sealed, local)\n", "/").as_deref(),
+            Some("apfs")
         );
     }
 
@@ -1646,15 +1780,18 @@ mod tests {
     fn icon_modes_keep_labels_readable() {
         assert_eq!(label_text("cpu", IconMode::Off), "CPU:");
         assert_eq!(label_text("wm", IconMode::Off), "WM:");
+        assert_eq!(label_text("packages", IconMode::Off), "Packages:");
+        assert_eq!(label_text("disk", IconMode::Off), "Disk (/):");
         assert!(label_text("cpu", IconMode::Unicode).starts_with('◈'));
+        assert!(label_text("packages", IconMode::Unicode).starts_with('▤'));
         assert!(label_text("cpu", IconMode::Nerd).contains("CPU:"));
     }
 
     #[test]
     fn failed_rows_stay_missing_and_collect_diagnostics() {
         let labels = [
-            "hostname", "user", "shell", "uptime", "cpu", "memory", "disk", "kernel", "terminal",
-            "wm", "desktop",
+            "hostname", "user", "shell", "uptime", "packages", "cpu", "memory", "disk", "kernel",
+            "terminal", "wm", "desktop",
         ];
         let mut errors = Vec::new();
         let rows = labels

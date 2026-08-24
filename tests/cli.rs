@@ -19,6 +19,8 @@ fn piped_output_is_plain_and_has_no_logo() {
     assert!(!stdout.contains("\x1b["));
     assert!(stdout.contains('@'));
     assert!(stdout.lines().any(|line| line.starts_with("WM:")));
+    assert!(stdout.lines().any(|line| line.starts_with("Packages:")));
+    assert!(stdout.lines().any(|line| line.starts_with("Disk (/):")));
 }
 
 #[test]
@@ -141,6 +143,7 @@ fn icons_are_opt_in() {
     );
     assert!(String::from_utf8_lossy(&nerd.stdout).contains("\u{f17c} OS:"));
     assert!(String::from_utf8_lossy(&unicode.stdout).contains("◉ OS:"));
+    assert!(String::from_utf8_lossy(&unicode.stdout).contains("▤ Packages:"));
 }
 
 #[test]
@@ -197,7 +200,9 @@ fn no_term_omits_the_uptime_row() {
         .expect("run minfetch");
 
     assert!(output.status.success());
-    assert!(!String::from_utf8_lossy(&output.stdout).contains("uptime"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("Uptime:"));
+    assert!(stdout.contains("Packages:"));
 }
 
 #[test]
