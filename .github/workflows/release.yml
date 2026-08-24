@@ -53,12 +53,12 @@ jobs:
 
       - name: Stage artifact
         shell: bash
-        run: cp "target/${{ matrix.target }}/release/minfetch" "minfetch-${{ matrix.target }}"
+        run: cp "target/${{ matrix.target }}/release/busq" "busq-${{ matrix.target }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: minfetch-${{ matrix.target }}
-          path: minfetch-${{ matrix.target }}
+          name: busq-${{ matrix.target }}
+          path: busq-${{ matrix.target }}
           if-no-files-found: error
 
   publish:

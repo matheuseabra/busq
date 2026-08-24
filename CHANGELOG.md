@@ -1,8 +1,15 @@
 # Changelog
 
-All notable changes to minfetch are documented here.
+All notable changes to busq are documented here.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-08-24
+
+### Changed
+
+- Renamed the project and canonical command from `minfetch` to `busq`.
+- Kept `minfetch` as a compatibility binary and retained the old config path as a fallback.
 
 ## [0.4.1] - 2026-08-23
 

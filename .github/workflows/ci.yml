@@ -40,7 +40,7 @@ jobs:
         run: cargo test --locked --release
 
       - name: Size budget trend
-        run: ./scripts/size-gate.sh target/release/minfetch
+        run: ./scripts/size-gate.sh target/release/busq
 
   coverage:
     name: coverage (90% lines)
@@ -90,8 +90,8 @@ jobs:
           export CARGO_INCREMENTAL=0
           cargo build --locked --release --target-dir target/repro-a
           cargo build --locked --release --target-dir target/repro-b
-          sha256sum target/repro-a/release/minfetch target/repro-b/release/minfetch
-          cmp target/repro-a/release/minfetch target/repro-b/release/minfetch
+          sha256sum target/repro-a/release/busq target/repro-b/release/busq
+          cmp target/repro-a/release/busq target/repro-b/release/busq
 
   release-artifacts:
     name: release artifact (${{ matrix.target }})
@@ -125,14 +125,14 @@ jobs:
         run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Check artifact size
-        run: ./scripts/size-gate.sh target/${{ matrix.target }}/release/minfetch
+        run: ./scripts/size-gate.sh target/${{ matrix.target }}/release/busq
 
       - name: Stage artifact
         shell: bash
-        run: cp "target/${{ matrix.target }}/release/minfetch" "minfetch-${{ matrix.target }}"
+        run: cp "target/${{ matrix.target }}/release/busq" "busq-${{ matrix.target }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: minfetch-${{ matrix.target }}
-          path: minfetch-${{ matrix.target }}
+          name: busq-${{ matrix.target }}
+          path: busq-${{ matrix.target }}
           if-no-files-found: error

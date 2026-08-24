@@ -14,7 +14,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, architecture, terminal, Rust version, and minfetch commit/version.
+      description: OS, architecture, terminal, Rust version, and busq commit/version.
     validations:
       required: true
   - type: textarea

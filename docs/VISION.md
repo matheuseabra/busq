@@ -1,11 +1,11 @@
-# minfetch vision and review verdicts
+# busq vision and review verdicts
 
 This is the single product vision and decision record. The round-1 verdicts
 are folded into the direction; companion docs must follow them.
 
 ## Vision
 
-minfetch gives a terminal user the shortest truthful summary of a machine that
+busq gives a terminal user the shortest truthful summary of a machine that
 fits in a small pane. It is single-shot and resize-aware, with identity,
 hardware, temperature, GPU, and context rows; plain-text, config, and
 feature-gated scripted output are supported.

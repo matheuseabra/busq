@@ -1,4 +1,4 @@
-Output docs/minfetch.gif
+Output docs/busq.gif
 
 Set Shell "zsh"
 Set FontFamily "JetBrains Mono"
@@ -10,7 +10,7 @@ Set Padding 24
 Set WindowBar Rings
 Set TypingSpeed 15ms
 
-Type "minfetch --theme mono"
+Type "busq --theme mono"
 Sleep 500ms
 Enter
 Sleep 3s

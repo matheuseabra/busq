@@ -159,6 +159,17 @@ fn help_and_version_include_the_current_version() {
 }
 
 #[test]
+fn canonical_binary_reports_busq() {
+    let output = Command::new(env!("CARGO_BIN_EXE_busq"))
+        .arg("--version")
+        .output()
+        .expect("run busq");
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("busq "));
+}
+
+#[test]
 fn probe_reports_detection_without_logo_or_ansi() {
     let probe = Command::new(env!("CARGO_BIN_EXE_minfetch"))
         .arg("--probe")
@@ -171,7 +182,7 @@ fn probe_reports_detection_without_logo_or_ansi() {
 
     assert!(probe.status.success() && alias.status.success());
     let stdout = String::from_utf8_lossy(&probe.stdout);
-    assert!(stdout.contains("minfetch probe"));
+    assert!(stdout.contains("busq probe"));
     assert!(stdout.contains("platform:") && stdout.contains("architecture:"));
     assert!(stdout.contains("terminal_size:") && stdout.contains("rows:"));
     assert!(!stdout.contains("\x1b[") && !stdout.contains("╭─╮"));

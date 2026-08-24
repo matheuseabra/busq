@@ -1,12 +1,12 @@
 #!/bin/sh
-# Size budget check for minfetch (ROADMAP Phase 0, amended by vision review H-11).
+# Size budget check for busq (ROADMAP Phase 0, amended by vision review H-11).
 # The budget is bendable: it is a reviewed number that grows only for features
 # that earn their share. CI always measures and reports the actual size.
-# Usage: scripts/size-gate.sh [path-to-binary]  (default: target/release/minfetch)
+# Usage: scripts/size-gate.sh [path-to-binary]  (default: target/release/busq)
 set -eu
 
-BIN="${1:-target/release/minfetch}"
-BUDGET_KIB="${MINFETCH_SIZE_BUDGET_KIB:-1536}" # 1.5 MiB hard ceiling
+BIN="${1:-target/release/busq}"
+BUDGET_KIB="${BUSQ_SIZE_BUDGET_KIB:-1536}" # 1.5 MiB hard ceiling
 TARGET_KIB=600                                 # aspiration for the default binary
 
 if [ ! -f "$BIN" ]; then
