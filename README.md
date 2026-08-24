@@ -1,9 +1,9 @@
-# busq (*busque*, Portuguese for “search”)
+# busq
 
 [![CI](https://github.com/matheuseabra/busq/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matheuseabra/busq/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/matheuseabra/busq?display_name=tag&sort=semver)](https://github.com/matheuseabra/busq/releases/latest)
 
-`busq` is a tiny, pane-aware system-info readout for terminals. It prints
+`busq` (*busque*, Portuguese for “search”) is a tiny, pane-aware system-info readout for terminals. It prints
 the shortest useful summary of a machine that still fits in a small pane.
 
 ![busq terminal demo](docs/busq.gif)
