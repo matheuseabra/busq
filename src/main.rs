@@ -79,12 +79,12 @@ struct Options {
 }
 
 pub fn version_string() -> String {
-    format!("minfetch {}", env!("CARGO_PKG_VERSION"))
+    format!("busq {}", env!("CARGO_PKG_VERSION"))
 }
 
 fn main() {
     let (options, help, version) = parse_args(env::args().skip(1)).unwrap_or_else(|error| {
-        eprintln!("minfetch: {error}\nTry 'minfetch --help'.");
+        eprintln!("busq: {error}\nTry 'busq --help'.");
         std::process::exit(2);
     });
     if version {
@@ -93,7 +93,7 @@ fn main() {
     }
     if help {
         println!(
-            "{}\n\nUsage: minfetch{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--interactive] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo [none|auto|PATH]]",
+            "{}\n\nUsage: busq{} [--config PATH] [--color auto|always|never] [--theme subtle|mono] [--interactive] [--probe] [--no-term] [--no-terminator] [--verbose] [--icons on|off|nerd] [--logo [none|auto|PATH]]",
             version_string(),
             if cfg!(feature = "json") {
                 " [--json]"
@@ -109,11 +109,11 @@ fn main() {
         .unwrap_or_else(|| detect_theme(stdout_is_terminal, env::var("COLORFGBG").ok().as_deref()));
     if options.interactive {
         if !stdout_is_terminal || !io::stdin().is_terminal() {
-            eprintln!("minfetch: --interactive requires a terminal");
+            eprintln!("busq: --interactive requires a terminal");
             std::process::exit(2);
         }
         if let Err(error) = run_interactive(&options, theme, stdout_is_terminal) {
-            eprintln!("minfetch: {error}");
+            eprintln!("busq: {error}");
             std::process::exit(2);
         }
         return;
@@ -275,24 +275,25 @@ const DEFAULT_ROWS: &[&str] = &[
 ];
 
 fn load_config(explicit: Option<&str>) -> Result<Config, String> {
-    let path = explicit
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("XDG_CONFIG_HOME").map(|path| PathBuf::from(path).join("minfetch/config"))
-        })
-        .or_else(|| {
-            env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/minfetch/config"))
-        });
-    let Some(path) = path else {
-        return Ok(Config::default());
+    let paths = if let Some(path) = explicit {
+        vec![PathBuf::from(path)]
+    } else if let Some(path) = env::var_os("XDG_CONFIG_HOME") {
+        let root = PathBuf::from(path);
+        vec![root.join("busq/config"), root.join("minfetch/config")]
+    } else if let Some(home) = env::var_os("HOME") {
+        let root = PathBuf::from(home).join(".config");
+        vec![root.join("busq/config"), root.join("minfetch/config")]
+    } else {
+        Vec::new()
     };
-    match fs::read_to_string(&path) {
-        Ok(content) => parse_config(&content),
-        Err(error) if error.kind() == io::ErrorKind::NotFound && explicit.is_none() => {
-            Ok(Config::default())
+    for path in paths {
+        match fs::read_to_string(&path) {
+            Ok(content) => return parse_config(&content),
+            Err(error) if error.kind() == io::ErrorKind::NotFound && explicit.is_none() => {}
+            Err(error) => return Err(format!("cannot read config {}: {error}", path.display())),
         }
-        Err(error) => Err(format!("cannot read config {}: {error}", path.display())),
     }
+    Ok(Config::default())
 }
 
 fn parse_config(content: &str) -> Result<Config, String> {
@@ -736,7 +737,7 @@ fn render_probe(
     stdout_is_terminal: bool,
 ) -> String {
     let mut output = format!(
-        "minfetch probe\nplatform: {}\narchitecture: {}\nstdout_tty: {}\nterminal_size: {}x{}\nrows:\n",
+        "busq probe\nplatform: {}\narchitecture: {}\nstdout_tty: {}\nterminal_size: {}x{}\nrows:\n",
         env::consts::OS,
         env::consts::ARCH,
         stdout_is_terminal,
@@ -1314,7 +1315,7 @@ mod tests {
 
     #[test]
     fn missing_hardware_paths_return_errors() {
-        let root = std::env::temp_dir().join(format!("minfetch-hardware-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("busq-hardware-{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("create empty fixture directory");
         assert!(linux_temperature(&root).is_err());
         assert!(linux_gpu(&root).is_err());
@@ -1324,7 +1325,7 @@ mod tests {
     #[test]
     fn parses_linux_hardware_directories() {
         let root =
-            std::env::temp_dir().join(format!("minfetch-hardware-fixture-{}", std::process::id()));
+            std::env::temp_dir().join(format!("busq-hardware-fixture-{}", std::process::id()));
         let thermal = root.join("thermal_zone0");
         let card = root.join("card0/device");
         std::fs::create_dir_all(&thermal).expect("create thermal fixture");
@@ -1375,7 +1376,7 @@ mod tests {
 
     #[test]
     fn custom_logo_files_and_invalid_config_paths_report_their_result() {
-        let path = std::env::temp_dir().join(format!("minfetch-logo-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("busq-logo-{}", std::process::id()));
         std::fs::write(&path, "logo").expect("write logo");
         assert_eq!(load_logo(path.to_str(), true).as_deref(), Some("logo"));
         std::fs::remove_file(&path).expect("remove logo");
@@ -1490,7 +1491,7 @@ mod tests {
 
     #[test]
     fn explicit_theme_overrides_config_theme() {
-        let path = std::env::temp_dir().join(format!("minfetch-theme-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("busq-theme-{}", std::process::id()));
         std::fs::write(&path, "theme = mono\n").expect("write config");
 
         let (configured, _, _) = parse_args(
@@ -1521,7 +1522,7 @@ mod tests {
         let rows = vec![("os".into(), "test-os".into())];
         let output = render_probe(&rows, &["cpu: fixture failure".into()], 80, 24, false);
 
-        assert!(output.contains("minfetch probe"));
+        assert!(output.contains("busq probe"));
         assert!(output.contains("platform:"));
         assert!(output.contains("architecture:"));
         assert!(output.contains("terminal_size: 80x24"));

@@ -1,6 +1,6 @@
-# minfetch — Architecture
+# busq — Architecture
 
-**minfetch** is a tiny, statically-linked alternative to `fastfetch` that fetches only the most
+**busq** is a tiny, statically-linked alternative to `fastfetch` that fetches only the most
 essential system info, can render a small ASCII-art logo beside the output, and is responsive to
 terminal (pane) resizes.
 
@@ -112,7 +112,7 @@ src/
 4. `render/layout.rs` assembles rows and the optional ASCII logo into a single framebuffer (an
    in-memory grid of cells), then emits them once per frame.
 5. **Responsiveness:** the renderer re-reads terminal size and rebuilds the framebuffer **every
-   print**. On resize, minfetch re-fetches fresh data and re-renders rather than using stale rows.
+   print**. On resize, busq re-fetches fresh data and re-renders rather than using stale rows.
 
 ### Rendering model: a cell grid
 
@@ -141,7 +141,7 @@ The heart of responsiveness is a simple `<Cell>` grid:
   tiniest approach is `nix::sys::signal` + reading `TIOCGWINSZ` on the signal in the main loop.
   Since dependencies are already lean, prefer the smallest option (`signal_hook` is a single small
   crate).
-- **Re-print semantic:** on `SIGWINCH` minfetch re-fetches sources, re-lays out fresh rows against
+- **Re-print semantic:** on `SIGWINCH` busq re-fetches sources, re-lays out fresh rows against
   the new width, and re-prints. It remains a single-shot tool; resize handling is not watch mode.
 
 ## Cross-platform

@@ -1,12 +1,12 @@
-# minfetch
+# busq
 
-[![CI](https://github.com/matheuseabra/minfetch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matheuseabra/minfetch/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/matheuseabra/minfetch?display_name=tag&sort=semver)](https://github.com/matheuseabra/minfetch/releases/latest)
+[![CI](https://github.com/matheuseabra/busq/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matheuseabra/busq/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/matheuseabra/busq?display_name=tag&sort=semver)](https://github.com/matheuseabra/busq/releases/latest)
 
-`minfetch` is a tiny, pane-aware system-info readout for terminals. It prints
+`busq` is a tiny, pane-aware system-info readout for terminals. It prints
 the shortest useful summary of a machine that still fits in a small pane.
 
-![minfetch terminal demo](docs/minfetch.gif)
+![busq terminal demo](docs/busq.gif)
 
 The project is early-stage. macOS and Linux are the primary targets; the
 current implementation is a single-shot readout with plain-text output,
@@ -25,8 +25,8 @@ cargo install --path .
 Homebrew can install the tagged public release through a tap:
 
 ```sh
-brew tap matheuseabra/minfetch https://github.com/matheuseabra/minfetch.git
-brew install matheuseabra/minfetch/minfetch
+brew tap matheuseabra/busq https://github.com/matheuseabra/busq.git
+brew install matheuseabra/busq/busq
 ```
 
 Useful flags:
@@ -54,8 +54,8 @@ Piped output is plain text and never includes ANSI escapes or the logo.
 Icons and the built-in OS ASCII logo are also off by default; enable either with
 `--icons on|nerd` and `--logo`.
 
-An optional config file at `$XDG_CONFIG_HOME/minfetch/config` (or
-`$HOME/.config/minfetch/config`) accepts `color`, `icons`, `logo`, `rows`, and
+An optional config file at `$XDG_CONFIG_HOME/busq/config` (or
+`$HOME/.config/busq/config`) accepts `color`, `icons`, `logo`, `rows`, and
 `theme` keys as `key = value`; command-line flags override its defaults. Use
 `--config PATH` to select another file.
 
@@ -69,19 +69,19 @@ using `--json`.
 
 ## tmux and zsh
 
-Install `minfetch` so it is on your `PATH`, then run it in a pane:
+Install `busq` so it is on your `PATH`, then run it in a pane:
 
 ```sh
-tmux split-window -h 'minfetch --no-term'
+tmux split-window -h 'busq --no-term'
 ```
 
 For a compact plain-text pane, use:
 
 ```sh
-minfetch --no-term --no-icons --color never
+busq --no-term --no-icons --color never
 ```
 
-`minfetch` takes one snapshot and exits by default. `minfetch --interactive` refreshes the same
+`busq` takes one snapshot and exits by default. `busq --interactive` refreshes the same
 readout every second; press `q` to quit.
 
 ## Project direction

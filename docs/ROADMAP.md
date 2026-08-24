@@ -1,4 +1,4 @@
-# minfetch — Roadmap
+# busq — Roadmap
 
 Quality-gated, phaseless-in-spirit: each phase has explicit **quality gates** that must pass before
 the next phase starts. Milestones are written as trackable tasks with `[ ]` checkboxes; a milestone
@@ -18,9 +18,9 @@ is "done" only when its gate is green.
 **Goal:** a building, testable, near-empty binary with CI measuring its size budget.
 
 Tasks:
-- [x] `cargo init` with package name `minfetch`, edition 2021+, and a dependency-light baseline.
+- [x] `cargo init` with package name `busq`, edition 2021+, and a dependency-light baseline.
 - [x] Add release profile per ARCH (opt-level z, lto, codegen-units 1, panic abort, strip).
-- [x] `main.rs` prints `"minfetch 0.1.0"` and exits 0.
+- [x] `main.rs` prints `"busq 0.1.0"` and exits 0.
 - [x] Add a `cargo size` helper (a make/just target or a script) that reports the binary size in CI
       as a trend metric and fails only on an agreed budget overrun; the budget may bend for earned
       features.
@@ -36,7 +36,7 @@ Tasks:
 
 ## Phase 1 — Flat, single-run fetch & render (v0.1)
 
-**Goal:** minfetch fetches the core info, prints it in a simple k/v list, honors `--color-no` /
+**Goal:** busq fetches the core info, prints it in a simple k/v list, honors `--color-no` /
 `NO_COLOR`, and handles the non-TTY path. ASCII logos can **stack** (above the list) in this phase;
 side-by-side layout lands in phase 2.
 
@@ -55,9 +55,9 @@ Tasks:
 
 **Phase 1 gate:**
 - [x] `cargo test --release` green locally.
-- [x] `minfetch | cat` (piped) yields plain, color-free output that renders correctly in a
+- [x] `busq | cat` (piped) yields plain, color-free output that renders correctly in a
       documentation file / text editor.
-- [x] `minfetch --color-no` emits no ANSI escape sequences.
+- [x] `busq --color-no` emits no ANSI escape sequences.
 - [ ] Binary size and manual pane fit verified on both primary OSes.
 
 ---
@@ -90,7 +90,7 @@ Tasks:
 ## Phase 2B — Terminal integration
 
 **Goal:** use real terminal dimensions and re-fetch fresh data on resize without
-turning minfetch into a resident/watch process.
+turning busq into a resident/watch process.
 
 Tasks:
 - [x] Read width/height with `ioctl(TIOCGWINSZ)` on Unix, retaining the fixed
@@ -176,7 +176,7 @@ Tasks:
 ## Milestone 5 — Theme detection (v0.5, complete)
 
 **Goal:** choose a small preset theme from terminal hints without changing the plain-output rules
-or turning minfetch into a theme framework.
+or turning busq into a theme framework.
 
 Tasks:
 - [x] Detect a terminal light/dark hint when one is available, with a deterministic fallback.

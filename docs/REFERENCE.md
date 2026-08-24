@@ -18,7 +18,7 @@ JSON support is optional. Build it explicitly when a script needs JSON:
 
 ```sh
 cargo build --release --features json
-minfetch --json
+busq --json
 ```
 
 For exotic systems where the native collectors are unavailable, build with the
@@ -38,7 +38,7 @@ cargo build --release --features sysinfo
 | `--icons on\|off\|nerd` | Select portable Unicode, no icons (the default), or Nerd Font icons. `--no-icons` is an alias for off. |
 | `--color auto\|always\|never` | Select label color behavior. Piped output stays plain. |
 | `--color-no`, `--no-color` | Disable color. |
-| `--theme subtle\|mono` | Select the label theme; otherwise minfetch detects a terminal hint. |
+| `--theme subtle\|mono` | Select the label theme; otherwise busq detects a terminal hint. |
 | `--interactive`, `-i` | Refresh every second until `q` is pressed. Requires a TTY. |
 | `--logo [none\|auto\|PATH]` | Show the built-in OS logo; use `none` to disable it, `auto` explicitly, or load a file. |
 | `--no-term` | Omit the uptime row. |
@@ -49,11 +49,11 @@ cargo build --release --features sysinfo
 
 ## Configuration
 
-minfetch uses the XDG path when `XDG_CONFIG_HOME` is set. Otherwise it uses the home config path:
+busq uses the XDG path when `XDG_CONFIG_HOME` is set. Otherwise it uses the home config path:
 
 ```text
-$XDG_CONFIG_HOME/minfetch/config
-$HOME/.config/minfetch/config
+$XDG_CONFIG_HOME/busq/config
+$HOME/.config/busq/config
 ```
 
 Use `--config PATH` to choose a file. Each line has the form `key = value`; `#` starts a
@@ -88,16 +88,16 @@ width allows it. Narrow panes stack the logo above the rows. At 30 columns or le
 value gets its own line. Values truncate with a Unicode-width-aware ellipsis, and rows beyond the
 height limit are omitted.
 
-Labels are dimmer than values when ANSI output is enabled. When stdout is not a TTY, minfetch omits
+Labels are dimmer than values when ANSI output is enabled. When stdout is not a TTY, busq omits
 the logo and ANSI escapes; `--interactive` rejects non-TTY input or output. A failed fetch renders
 `—` in its row and does not stop the other rows. `--verbose` adds the underlying failure to stderr.
 
 ## Homebrew
 
-`Formula/minfetch.rb` tracks the public `v0.1.0` source archive. Add this repository as a tap and
+`Formula/busq.rb` tracks the public release source archive. Add this repository as a tap and
 install the formula with:
 
 ```sh
-brew tap matheuseabra/minfetch https://github.com/matheuseabra/minfetch.git
-brew install matheuseabra/minfetch/minfetch
+brew tap matheuseabra/busq https://github.com/matheuseabra/busq.git
+brew install matheuseabra/busq/busq
 ```
