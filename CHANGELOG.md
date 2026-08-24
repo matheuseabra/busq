@@ -4,6 +4,8 @@ All notable changes to busq are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-24
+
 ### Added
 
 - Added Fastfetch-style OS details, Homebrew package counts, and filesystem type to the default rows.
