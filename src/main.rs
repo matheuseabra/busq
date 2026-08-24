@@ -939,6 +939,7 @@ fn operating_system() -> FetchResult {
     Ok(env::consts::OS.into())
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn format_macos_os(product: &str, version: &str, build: &str, architecture: &str) -> String {
     let codename = macos_codename(version);
     match codename {
@@ -947,6 +948,7 @@ fn format_macos_os(product: &str, version: &str, build: &str, architecture: &str
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn macos_codename(version: &str) -> Option<&'static str> {
     match version.split('.').next()?.parse::<u8>().ok()? {
         11 => Some("Big Sur"),
