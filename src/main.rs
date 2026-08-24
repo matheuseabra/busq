@@ -265,13 +265,14 @@ const ROW_NAMES: &[&str] = &[
     "disk",
     "kernel",
     "terminal",
+    "wm",
     "desktop",
     "temperature",
     "gpu",
 ];
 const DEFAULT_ROWS: &[&str] = &[
-    "hostname", "user", "os", "kernel", "uptime", "shell", "terminal", "cpu", "gpu", "memory",
-    "disk",
+    "hostname", "user", "os", "kernel", "uptime", "shell", "terminal", "wm", "cpu", "gpu",
+    "memory", "disk",
 ];
 
 fn load_config(explicit: Option<&str>) -> Result<Config, String> {
@@ -401,6 +402,7 @@ fn rows(no_term: bool, selected: Option<&[String]>) -> (Vec<(String, String)>, V
             environment_value(&["TERM_PROGRAM", "TERM"]),
             &mut errors,
         ),
+        fetched_row("wm", window_manager(), &mut errors),
         fetched_row("cpu", cpu(), &mut errors),
         fetched_row("gpu", gpu(), &mut errors),
         fetched_row("memory", memory(), &mut errors),
@@ -848,7 +850,7 @@ fn icon(label: &str, nerd: bool) -> String {
             "uptime" => "\u{f017}",
             "shell" | "terminal" => "\u{f120}",
             "cpu" => "\u{f2db}",
-            "gpu" | "desktop" => "\u{f108}",
+            "gpu" | "desktop" | "wm" => "\u{f108}",
             "memory" => "\u{f538}",
             "disk" => "\u{f0a0}",
             "temperature" => "\u{f2c9}",
@@ -861,6 +863,7 @@ fn icon(label: &str, nerd: bool) -> String {
             "uptime" => "◷",
             "shell" => "›",
             "terminal" => "▹",
+            "wm" => "▧",
             "cpu" => "◈",
             "gpu" => "◐",
             "memory" => "▣",
@@ -883,6 +886,7 @@ fn label_text(label: &str, icons: IconMode) -> String {
         "os" => "OS",
         "cpu" => "CPU",
         "gpu" => "GPU",
+        "wm" => "WM",
         _ => label,
     };
     let mut characters = label.chars();
@@ -906,6 +910,32 @@ fn hostname() -> FetchResult {
 
 fn environment_value(names: &[&str]) -> FetchResult {
     first_env(names).ok_or_else(|| format!("{} is unset", names.join("/")))
+}
+
+fn window_manager() -> FetchResult {
+    if let Some(value) = first_env(&["WM", "WM_NAME"]) {
+        return Ok(value);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return command("wmctrl -m").and_then(|info| {
+            parse_wmctrl(&info).ok_or_else(|| "wmctrl reported no window manager".into())
+        });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return Ok("Quartz Compositor".into());
+    }
+    #[allow(unreachable_code)]
+    Err("window manager is unsupported on this platform".into())
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_wmctrl(info: &str) -> Option<String> {
+    info.lines()
+        .find_map(|line| line.strip_prefix("Name:").map(str::trim))
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 fn command(command: &str) -> FetchResult {
@@ -1241,7 +1271,8 @@ mod tests {
         linux_gpu, linux_temperature, load_config, load_logo, mem_kib, os_logo, parse_args,
         parse_boottime, parse_color, parse_colorfgbg, parse_config, parse_cpuinfo,
         parse_drm_uevent, parse_icons, parse_ioreg_temperature, parse_millidegrees, parse_rows,
-        parse_system_profiler_gpu, parse_vm_stat, render, render_probe, render_with_color,
+        parse_system_profiler_gpu, parse_vm_stat, parse_wmctrl, render, render_probe,
+        render_with_color,
     };
 
     #[test]
@@ -1311,6 +1342,15 @@ mod tests {
                 .as_deref(),
             Some("Apple M1 Pro")
         );
+    }
+
+    #[test]
+    fn parses_wmctrl_window_manager() {
+        assert_eq!(
+            parse_wmctrl("Name: Mutter\nClass: N/A\n").as_deref(),
+            Some("Mutter")
+        );
+        assert_eq!(parse_wmctrl("Class: N/A\n"), None);
     }
 
     #[test]
@@ -1605,6 +1645,7 @@ mod tests {
     #[test]
     fn icon_modes_keep_labels_readable() {
         assert_eq!(label_text("cpu", IconMode::Off), "CPU:");
+        assert_eq!(label_text("wm", IconMode::Off), "WM:");
         assert!(label_text("cpu", IconMode::Unicode).starts_with('◈'));
         assert!(label_text("cpu", IconMode::Nerd).contains("CPU:"));
     }
@@ -1613,7 +1654,7 @@ mod tests {
     fn failed_rows_stay_missing_and_collect_diagnostics() {
         let labels = [
             "hostname", "user", "shell", "uptime", "cpu", "memory", "disk", "kernel", "terminal",
-            "desktop",
+            "wm", "desktop",
         ];
         let mut errors = Vec::new();
         let rows = labels

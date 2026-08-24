@@ -18,6 +18,7 @@ fn piped_output_is_plain_and_has_no_logo() {
     let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
     assert!(!stdout.contains("\x1b["));
     assert!(stdout.contains('@'));
+    assert!(stdout.lines().any(|line| line.starts_with("WM:")));
 }
 
 #[test]
