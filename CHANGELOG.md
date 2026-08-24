@@ -4,6 +4,12 @@ All notable changes to busq are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-24
+
+### Added
+
+- Added the window manager to the default system statistics.
+
 ## [1.0.0] - 2026-08-24
 
 ### Changed
