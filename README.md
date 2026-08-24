@@ -1,4 +1,4 @@
-# busq
+# busq (*busque*, Portuguese for “search”)
 
 [![CI](https://github.com/matheuseabra/busq/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matheuseabra/busq/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/matheuseabra/busq?display_name=tag&sort=semver)](https://github.com/matheuseabra/busq/releases/latest)
