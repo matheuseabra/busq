@@ -9,8 +9,11 @@ Set Theme "Builtin Dark"
 Set Padding 24
 Set WindowBar Rings
 Set TypingSpeed 15ms
+Env PATH "target/debug:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-Type "busq --theme mono"
+Type "busq --icons on -i"
 Sleep 500ms
 Enter
 Sleep 3s
+Type "q"
+Sleep 500ms
