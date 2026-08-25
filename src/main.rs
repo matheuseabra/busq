@@ -1401,6 +1401,20 @@ mod tests {
             format_macos_os("macOS", "15.7.8", "24G824", "arm64"),
             "macOS Sequoia 15.7.8 (24G824) arm64"
         );
+        for (version, codename) in [
+            ("11.7", "Big Sur"),
+            ("12.7", "Monterey"),
+            ("13.7", "Ventura"),
+            ("14.7", "Sonoma"),
+            ("26.0", "Tahoe"),
+        ] {
+            assert_eq!(super::macos_codename(version), Some(codename));
+        }
+        assert_eq!(super::macos_codename("10.15.7"), None);
+        assert_eq!(
+            format_macos_os("macOS", "10.15.7", "19H2026", "x86_64"),
+            "macOS 10.15.7 (19H2026) x86_64"
+        );
         assert_eq!(format_uptime(3), "0m");
         assert_eq!(format_uptime(3_660), "1h 1m");
         assert_eq!(format_uptime(93_784), "1d 2h 3m");
